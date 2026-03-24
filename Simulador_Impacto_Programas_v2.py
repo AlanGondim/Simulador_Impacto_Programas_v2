@@ -1,182 +1,231 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
+import numpy as np
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import seaborn as sns
 from fpdf import FPDF
-from datetime import datetime, timedelta
+from datetime import datetime
 from PIL import Image
 import io
+import os
+
+# --- CONFIGURAÇÕES DE ESCALA (CONFORME SOLICITADO) ---
+STEP_MONEY = 10.0
+STEP_MACRO_MONEY = 1000.0
+STEP_RESOURCE = 1
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="PMO Impact Analyzer", layout="wide")
+st.set_page_config(page_title="MV PMO Decision Intelligence", layout="wide")
 
-# --- ESTILIZAÇÃO CUSTOMIZADA ---
+# --- ESTILO CSS ---
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .main { background-color: #f4f7f9; }
+    .stMetric { background-color: #ffffff; border-left: 5px solid #003366; padding: 15px; border-radius: 5px; }
+    div.stButton > button:first-child { background-color: #003366; color: white; width: 100%; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE CÁLCULO (PERT) ---
+# --- FUNÇÕES CORE ---
+def format_currency(val):
+    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 def calc_pert(o, m, p):
     return (o + 4*m + p) / 6
 
-def calc_std_dev(o, p):
-    return (p - o) / 6
+def run_monte_carlo(o, m, p, n=5000):
+    if o >= p: return m, m
+    sims = np.random.triangular(o, m, p, n)
+    return np.mean(sims), np.percentile(sims, 95)
 
-# --- SIDEBAR: CONFIGURAÇÕES E LOGO ---
-try:
-    logo = Image.open("Logomarca MV Atualizada.png")
-    st.sidebar.image(logo, width=150)
-except:
-    st.sidebar.warning("Logo não encontrada. Verifique o arquivo.")
+# --- DATABASE ---
+def init_db():
+    conn = sqlite3.connect('pmo_master.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS recursos (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                 projeto TEXT, funcao TEXT, senioridade TEXT, custo_h REAL, horas INTEGER, subtotal REAL)''')
+    conn.commit()
+    return conn
 
-st.sidebar.title("Configurações do Programa")
-proj_name = st.sidebar.text_input("Nome do Programa", "Migração ERP - MV")
-manager = st.sidebar.text_input("Gerente Responsável", "Kamyla")
-revenue = st.sidebar.number_input("Receita Líquida (R$)", value=4719147.0, step=1000.0)
-current_cost = st.sidebar.number_input("Custo Atual EAC (R$)", value=4963246.0, step=1000.0)
+db_conn = init_db()
 
-# --- CORPO PRINCIPAL ---
-st.title("📊 Painel de Gestão de Impacto & DRE")
-st.info("Ferramenta de apoio à decisão para análise de mudanças e riscos financeiros.")
-
-# 1. CATEGORIAS DE IMPACTO (HIDE AND SHOW)
-st.subheader("1. Categorias de Impacto & Cenário")
-categoria = st.selectbox("Selecione a Categoria de Mudança:", 
-                        [" ","Replanejamento (Rollout)", "Retrabalho (Escopo)", "Instabilidade (Bugs)", "Infraestrutura (Ociosidade)"])
-
-impacto_base = 0
-impacto_risco = 0
-meses_impacto = 1
-
-with st.expander(f"Configurar Detalhes: {categoria}", expanded=True):
-    col1, col2, col3 = st.columns(3)
-    
-    if categoria == "Replanejamento (Rollout)":
-        escopo = col1.number_input("Qtd. Rollouts Restantes", value=11)
-        pace_baseline = col2.number_input("Pace Original (Un/mês)", value=5.5)
-        burn_rate = col3.number_input("Burn Rate Mensal Equipe (R$)", value=250000.0)
-        
-        o = st.slider("Pace Otimista", 1.0, 10.0, 6.0)
-        m = st.slider("Pace Provável", 1.0, 10.0, 6.0)
-        p = st.slider("Pace Pessimista", 1.0, 10.0, 4.0)
-        
-        dur_base = escopo / pace_baseline
-        dur_pert = calc_pert(escopo/o, escopo/m, escopo/p)
-        std_dev = calc_std_dev(escopo/o, escopo/p)
-        dur_95 = dur_pert + (2 * std_dev)
-        
-        impacto_base = dur_base * burn_rate
-        impacto_risco = (dur_95 - dur_base) * burn_rate
-        meses_impacto = round(dur_95)
-
-    elif categoria == "Retrabalho (Escopo)":
-        itens = col1.number_input("Itens de Retrabalho", value=10)
-        taxa_h = col2.number_input("Taxa Média Hora (R$)", value=120.0)
-        
-        o = col1.number_input("Horas/Item (Otimista)", value=4)
-        m = col2.number_input("Horas/Item (Provável)", value=8)
-        p = col3.number_input("Horas/Item (Pessimista)", value=16)
-        
-        total_h = itens * calc_pert(o, m, p)
-        risco_h = itens * (2 * calc_std_dev(o, p))
-        
-        impacto_base = total_h * taxa_h
-        impacto_risco = risco_h * taxa_h
-
-    # Adicionar lógica similar para Bugs e Infra...
-    else:
-        st.write("Configurações simplificadas para este cenário...")
-        impacto_base = st.number_input("Impacto Base Estimado (R$)", value=50000.0)
-        impacto_risco = st.number_input("Reserva Delta PERT (R$)", value=15000.0)
-
-orcamento_total = impacto_base + impacto_risco
-
-# --- RESULTADOS FINANCEIROS ---
-st.divider()
-st.subheader("2. Análise de Custos e Margem")
-c1, c2, c3 = st.columns(3)
-c1.metric("Custo Estimado (Base)", f"R$ {impacto_base:,.2f}")
-c2.metric("Reserva Delta PERT (Risco)", f"R$ {impacto_risco:,.2f}", delta="95% Confiança")
-c3.metric("Orçamento Total Cenário", f"R$ {orcamento_total:,.2f}")
-
-# --- DRE IMPACTO ---
-st.subheader("3. Impacto na Margem Final (DRE)")
-eac_novo = current_cost + orcamento_total
-margem_atual = (1 - (current_cost / revenue)) * 100
-margem_nova = (1 - (eac_novo / revenue)) * 100
-
-col_dre1, col_dre2 = st.columns(2)
-with col_dre1:
-    st.write("**Resumo Financeiro**")
-    df_dre = pd.DataFrame({
-        "Indicador": ["Receita", "Custo Original", "Impacto Cenário", "Novo EAC"],
-        "Valor (R$)": [revenue, current_cost, orcamento_total, eac_novo]
-    })
-    st.table(df_dre.style.format({"Valor (R$)": "R$ {:,.2f}"}))
-
-with col_dre2:
-    st.write("**Erosão de Margem**")
-    st.metric("Margem Final Projetada", f"{margem_nova:.2f}%", 
-              delta=f"{margem_nova - margem_atual:.2f} p.p.", delta_color="inverse")
-
-# --- TRIÂNGULO DE FERRO ---
-st.subheader("4. Análise Integrada: Triângulo de Ferro")
-# Simulação de eixos (1.0 é a base estável)
-cost_idx = orcamento_total / (current_cost * 0.1) if current_cost > 0 else 1.0 # Sensibilidade
-time_idx = 1.2 if impacto_risco > 0 else 1.0
-scope_idx = 1.3 if categoria == "Retrabalho (Escopo)" else 1.1
-
-fig = go.Figure()
-fig.add_trace(go.Scatterpolar(
-      r=[1, 1, 1, 1], theta=['Custo', 'Prazo', 'Escopo', 'Custo'],
-      fill='toself', name='Baseline', line_color='blue'
-))
-fig.add_trace(go.Scatterpolar(
-      r=[cost_idx, time_idx, scope_idx, cost_idx],
-      theta=['Custo', 'Prazo', 'Escopo', 'Custo'],
-      fill='toself', name='Projetado', line_color='red'
-))
-fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 2])), showlegend=True)
-st.plotly_chart(fig)
-
-# --- GERADOR DE RELATÓRIO PDF ---
-class PDF(FPDF):
+# --- CLASSE PDF EXECUTIVO ---
+class ExecutivePDF(FPDF):
     def header(self):
-        if 'logo' in globals() or 'logo' in locals():
-            with io.BytesIO() as output:
-                logo.save(output, format="PNG")
-                self.image(io.BytesIO(output.getvalue()), 10, 8, 20)
-        self.set_font('Arial', 'B', 12)
-        self.cell(80)
-        self.cell(30, 10, f'Relatorio Executivo - {proj_name}', 0, 0, 'C')
-        self.ln(20)
-        
+        try:
+            self.image("Logomarca MV Atualizada.png", 10, 8, 25)
+        except: pass
+        self.set_font('Arial', 'B', 15)
+        self.set_text_color(0, 51, 102)
+        self.cell(0, 10, 'PARECER TECNICO DE IMPACTO ECONOMICO', 0, 1, 'R')
+        self.set_font('Arial', '', 9)
+        self.cell(0, 5, f'Emitido em: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'R')
+        self.ln(15)
+        # Watermark
+        self.set_font('Arial', 'B', 40)
+        self.set_text_color(240, 240, 240)
+        with self.rotation(45, 100, 150):
+            self.text(40, 190, "CONFIDENTIAL")
+
     def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
+        self.set_y(-30)
+        self.set_font('Arial', 'B', 8)
+        self.set_text_color(100)
         self.cell(0, 10, 'Desenvolvido por PMO Corporativo de Programas', 0, 0, 'C')
-        self.set_text_color(200, 200, 200)
-        self.text(50, 150, "CONFIDENTIAL")
+        self.set_y(-20)
+        self.line(30, self.get_y(), 80, self.get_y())
+        self.line(130, self.get_y(), 180, self.get_y())
+        self.set_font('Arial', '', 7)
+        self.text(40, self.get_y()+4, "GERENTE DO PROGRAMA")
+        self.text(140, self.get_y()+4, "DIRETOR DE OPERAÇÕES")
 
-def generate_pdf():
-    pdf = PDF()
+# --- SIDEBAR: DADOS MESTRES ---
+with st.sidebar:
+    try:
+        st.image("Logomarca MV Atualizada.png", width=120)
+    except: pass
+    st.title("⚙️ Configuração Master")
+    proj = st.selectbox("Programa", ["UNIMED SERRA GAUCHA", "INS", "CLINICA GIRASSOL", "EINSTEIN", "MOGI", "RHP"])
+    gerente = st.text_input("Gerente Responsável", "Kamyla")
+    receita_net = st.number_input("Receita Líquida (R$)", value=4719147.0, step=STEP_MACRO_MONEY)
+    custo_eac = st.number_input("Custo Atual EAC (R$)", value=4963246.0, step=STEP_MACRO_MONEY)
+
+# --- CABEÇALHO ---
+st.title("🛡️ MV PMO Decision Intelligence")
+st.markdown(f"**Análise de Impacto: {proj}**")
+
+# --- 1. CATEGORIAS DE IMPACTO (HIDE AND SHOW) ---
+st.subheader("1. Escopo e Justificativa")
+cat_selecionada = st.selectbox("Categoria Principal do Impacto", 
+                              [" ", "Replanejamento (Rollout)", "Retrabalho (Escopo)", "Instabilidade (Bugs)", "Infraestrutura (Ociosidade)"])
+
+impacto_auto_base = 0.0
+if cat_selecionada != " ":
+    with st.expander(f"Configuração Detalhada: {cat_selecionada}", expanded=True):
+        col_c1, col_c2, col_c3 = st.columns(3)
+        if cat_selecionada == "Replanejamento (Rollout)":
+            v1 = col_c1.number_input("Rollouts Restantes", value=11, step=STEP_RESOURCE)
+            v2 = col_c2.number_input("Burn Mensal Equipe (R$)", value=250000.0, step=STEP_MACRO_MONEY)
+            v3 = col_c3.slider("Novo Pace Estimado (un/mês)", 1.0, 10.0, 5.0)
+            impacto_auto_base = (v1 / v3) * v2
+        elif cat_selecionada == "Retrabalho (Escopo)":
+            v1 = col_c1.number_input("Qtd Itens Retrabalho", value=5, step=STEP_RESOURCE)
+            v2 = col_c2.number_input("H/H Média por Item", value=40.0, step=1.0)
+            v3 = col_c3.number_input("Custo Médio Hora (R$)", value=150.0, step=STEP_MONEY)
+            impacto_auto_base = v1 * v2 * v3
+        else:
+            impacto_auto_base = st.number_input("Valor Estimado de Impacto Direto (R$)", value=0.0, step=STEP_MACRO_MONEY)
+
+# --- 2. ALOCAÇÃO DE RECURSOS (HIDE AND SHOW) ---
+st.subheader("2. Gestão de Alocação (Custo Variável)")
+with st.expander("➕ Adicionar/Ajustar Recursos Humanos", expanded=False):
+    with st.form("form_rec"):
+        f1, f2, f3, f4 = st.columns([2,1,1,1])
+        func = f1.selectbox("Função", ["Consultor", "Analista", "Arquiteto", "Dev", "PMO"])
+        seni = f2.selectbox("Nível", ["Jr", "Pl", "Sr", "Esp"])
+        ch = f3.number_input("Custo/Hora", value=130.0, step=STEP_MONEY)
+        hr = f4.number_input("Qtd Horas", value=160, step=STEP_RESOURCE)
+        if st.form_submit_button("Confirmar Alocação"):
+            db_conn.execute("INSERT INTO recursos (projeto, funcao, senioridade, custo_h, horas, subtotal) VALUES (?,?,?,?,?,?)",
+                         (proj, func, seni, ch, hr, ch*hr))
+            db_conn.commit()
+            st.rerun()
+
+df_rec = pd.read_sql_query(f"SELECT * FROM recursos WHERE projeto = '{proj}'", db_conn)
+custo_alocacao = df_rec['subtotal'].sum() if not df_rec.empty else 0.0
+
+if not df_rec.empty:
+    st.dataframe(df_rec[['funcao', 'senioridade', 'custo_h', 'horas', 'subtotal']], use_container_width=True)
+    if st.button("🗑️ Resetar Alocação"):
+        db_conn.execute(f"DELETE FROM recursos WHERE projeto = '{proj}'")
+        db_conn.commit()
+        st.rerun()
+
+# --- 3. MODELAGEM PERT & MONTE CARLO ---
+st.divider()
+total_impacto_nominal = impacto_auto_base + custo_alocacao
+
+st.subheader("3. Modelagem de Risco e Incerteza")
+col_p1, col_p2 = st.columns([1, 2])
+
+with col_p1:
+    o = st.number_input("Cenário Otimista (R$)", value=total_impacto_nominal * 0.9, step=STEP_MACRO_MONEY)
+    m = total_impacto_nominal
+    p = st.number_input("Cenário Pessimista (R$)", value=total_impacto_nominal * 1.6, step=STEP_MACRO_MONEY)
+    
+    val_pert = calc_pert(o, m, p)
+    _, val_mc = run_monte_carlo(o, m, p)
+    delta_risk = val_mc - m
+
+with col_p2:
+    st.write("**Exposição Financeira Estimada**")
+    c_m1, c_m2, c_m3 = st.columns(3)
+    c_m1.metric("Impacto Nominal", format_currency(m))
+    c_m2.metric("PERT (Provável)", format_currency(val_pert))
+    c_m3.metric("P95 (Teto Risco)", format_currency(val_mc), delta=format_currency(delta_risk), delta_color="inverse")
+
+# --- 4. DRE E TRIÂNGULO DE FERRO ---
+st.divider()
+st.subheader("4. Visão Executiva: Margem e Triângulo de Ferro")
+
+col_d1, col_d2 = st.columns([1.5, 1])
+
+with col_d1:
+    # Cálculo de Margens
+    eac_final = custo_eac + val_mc
+    margem_original = (1 - (custo_eac / receita_net)) * 100 if receita_net > 0 else 0
+    margem_projetada = (1 - (eac_final / receita_net)) * 100 if receita_net > 0 else 0
+    
+    st.write("**Análise de Erosão de Margem**")
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(name='Margem Original', x=[proj], y=[margem_original], marker_color='#003366'))
+    fig_bar.add_trace(go.Bar(name='Margem Pós-Impacto (P95)', x=[proj], y=[margem_projetada], marker_color='#C0392B'))
+    fig_bar.update_layout(height=300, yaxis_title="Margem (%)")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col_d2:
+    # Triângulo de Ferro (Normalizado 0 a 2, onde 1 é o equilíbrio)
+    st.write("**Impacto no Triângulo de Ferro**")
+    cost_v = val_mc / (m * 1.2) if m > 0 else 1.0
+    time_v = 1.4 if "Replanejamento" in cat_selecionada else 1.1
+    scope_v = 1.5 if "Retrabalho" in cat_selecionada else 1.1
+    
+    fig_radar = go.Figure()
+    fig_radar.add_trace(go.Scatterpolar(r=[1,1,1,1], theta=['Custo','Prazo','Escopo','Custo'], fill='toself', name='Baseline'))
+    fig_radar.add_trace(go.Scatterpolar(r=[cost_v, time_v, scope_v, cost_v], theta=['Custo','Prazo','Escopo','Custo'], fill='toself', name='Cenário Atual', line_color='red'))
+    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 2])), height=300, margin=dict(t=20, b=20, l=40, r=40))
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+# --- 5. GERAÇÃO DE RELATÓRIO ---
+st.divider()
+if st.button("📑 GERAR RELATÓRIO EXECUTIVO PARA VALIDAÇÃO"):
+    pdf = ExecutivePDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=10)
-    pdf.cell(200, 10, txt=f"Data do Relatório: {datetime.now().strftime('%d/%m/%Y')}", ln=True)
-    pdf.cell(200, 10, txt=f"Gerente: {manager}", ln=True)
-    pdf.ln(10)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(200, 10, txt="Resumo do Impacto", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.cell(200, 10, txt=f"Categoria: {categoria}", ln=True)
-    pdf.cell(200, 10, txt=f"Orcamento Adicional (Base + Risco): R$ {orcamento_total:,.2f}", ln=True)
-    pdf.cell(200, 10, txt=f"Margem Final Projetada: {margem_nova:.2f}%", ln=True)
-    pdf.ln(10)
-    pdf.multi_cell(0, 10, txt="Analise Executiva: O impacto apresentado considera a metodologia PERT para calculo de incertezas. Recomenda-se a aprovacao da reserva de contingencia para evitar paralisacao das frentes de trabalho.")
-    return pdf.output(dest='S')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, f"Projeto: {proj}", ln=1)
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(0, 10, f"Gerente: {gerente} | Categoria: {cat_selecionada}", ln=1)
+    
+    pdf.ln(5)
+    pdf.set_fill_color(0, 51, 102); pdf.set_text_color(255)
+    pdf.cell(0, 8, " RESUMO FINANCEIRO E RISCO", ln=1, fill=True)
+    pdf.set_text_color(0)
+    pdf.cell(95, 10, f"Receita Liquida: {format_currency(receita_net)}", border=1)
+    pdf.cell(95, 10, f"Custo EAC Base: {format_currency(custo_eac)}", border=1, ln=1)
+    pdf.cell(95, 10, f"Impacto P95 (Teto): {format_currency(val_mc)}", border=1)
+    pdf.cell(95, 10, f"Margem Final: {margem_projetada:.2f}%", border=1, ln=1)
+    
+    if not df_rec.empty:
+        pdf.ln(5)
+        pdf.set_fill_color(200, 200, 200); pdf.set_text_color(0)
+        pdf.cell(0, 8, " DETALHAMENTO DE RECURSOS ALOCADOS", ln=1, fill=True)
+        pdf.set_font("Arial", 'B', 9)
+        pdf.cell(60, 8, "Função", 1); pdf.cell(40, 8, "Nível", 1); pdf.cell(30, 8, "Horas", 1); pdf.cell(60, 8, "Subtotal", 1, ln=1)
+        pdf.set_font("Arial", '', 9)
+        for _, r in df_rec.iterrows():
+            pdf.cell(60, 8, r['funcao'], 1); pdf.cell(40, 8, r['senioridade'], 1); pdf.cell(30, 8, str(r['horas']), 1); pdf.cell(60, 8, format_currency(r['subtotal']), 1, ln=1)
 
-if st.button("Gerar Relatório Executivo (PDF)"):
-    pdf_bytes = generate_pdf()
-    st.download_button(label="Baixar Relatório A4", data=pdf_bytes, file_name="relatorio_pmo.pdf", mime="application/pdf")
+    pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
+    st.download_button(label="📥 Baixar Relatório A4 (Confidential)", data=pdf_bytes, file_name=f"PARECER_{proj}.pdf", mime="application/pdf")
