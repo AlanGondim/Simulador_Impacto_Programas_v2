@@ -44,7 +44,7 @@ st.info("Ferramenta de apoio à decisão para análise de mudanças e riscos fin
 # 1. CATEGORIAS DE IMPACTO (HIDE AND SHOW)
 st.subheader("1. Categorias de Impacto & Cenário")
 categoria = st.selectbox("Selecione a Categoria de Mudança:", 
-                        ["Replanejamento (Rollout)", "Retrabalho (Escopo)", "Instabilidade (Bugs)", "Infraestrutura (Ociosidade)"])
+                        [" ","Replanejamento (Rollout)", "Retrabalho (Escopo)", "Instabilidade (Bugs)", "Infraestrutura (Ociosidade)"])
 
 impacto_base = 0
 impacto_risco = 0
