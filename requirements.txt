@@ -1,6 +1,5 @@
 streamlit
 pandas
-matplotlib
-seaborn
+plotly
 fpdf2
-SQLAlchemy
+Pillow
