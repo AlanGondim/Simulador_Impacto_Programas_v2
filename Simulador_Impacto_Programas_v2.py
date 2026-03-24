@@ -179,4 +179,11 @@ def generate_pdf():
 
 if st.button("Gerar Relatório Executivo (PDF)"):
     pdf_bytes = generate_pdf()
-    st.download_button(label="Baixar Relatório A4", data=pdf_bytes, file_name="relatorio_pmo.pdf", mime="application/pdf")
+    
+    # Adicionamos uma verificação simples e passamos os bytes diretamente
+    st.download_button(
+        label="Clique aqui para Baixar Relatório A4",
+        data=pdf_bytes,
+        file_name=f"Relatorio_Impacto_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mime="application/pdf"
+    )
