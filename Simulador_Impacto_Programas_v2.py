@@ -190,8 +190,8 @@ st.markdown('<div class="section-header">7. DRE do Programa: Análise de margem 
 with st.container(border=True):
     d1, d2, d3 = st.columns(3)
     margem_meta = d1.number_input("Margem inicial (Meta) %", value=35.0)
-    receita_liq = d2.number_input("Receita líquida atual", value=1000.0, step=1000.0)
-    custo_eac_atual = d3.number_input("Custo total atual (EAC)", value=1000.0, step=1000.0)
+    receita_liq = d2.number_input("Receita líquida atual", min_value=1.0 , value=5000.0, step=1000.0)
+    custo_eac_atual = d3.number_input("Custo total atual (EAC)", min_value=1.0, value=1000.0, step=1000.0)
 
     margem_atual = (1 - (custo_eac_atual/receita_liq)) * 100
     novo_eac = custo_eac_atual + total_cenario
