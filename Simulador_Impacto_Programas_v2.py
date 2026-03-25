@@ -50,9 +50,9 @@ st.set_page_config(page_title="MV PMO Intelligence PRO", layout="wide")
 
 with st.sidebar:
     st.header("⚙️ Parâmetros do Programa")
-    proj = st.selectbox("Selecione o Projeto", ["UNIMED SERRA GAUCHA", "INS", "CLINICA GIRASSOL", "EINSTEIN", "RHP"])
-    receita_net = st.number_input("Receita Líquida (R$)", value=4719147.0, step=STEP_MACRO_MONEY)
-    custo_eac_base = st.number_input("Custo Atual EAC (R$)", value=4963246.0, step=STEP_MACRO_MONEY)
+    proj = st.selectbox("Selecione o Projeto", [" ", "UNIMED SERRA GAUCHA", "INS", "CLINICA GIRASSOL", "EINSTEIN", "RHP"])
+    receita_net = st.number_input("Receita Líquida (R$)", value=1000.0, step=STEP_MACRO_MONEY)
+    custo_eac_base = st.number_input("Custo Atual EAC (R$)", value=1000.0, step=STEP_MACRO_MONEY)
 
 tab1, tab2, tab3 = st.tabs(["🚀 Simulação Ativa", "📊 Sensibilidade", "📚 Hub de Cenários"])
 
@@ -66,30 +66,30 @@ with tab1:
         col_c1, col_c2, col_c3 = st.columns(3)
         if cat_impacto == "Replanejamento (Rollout)":
             u = col_c1.number_input("Unidades Restantes", value=10, step=STEP_RESOURCE)
-            b = col_c2.number_input("Burn Rate Mensal", value=150000.0, step=STEP_MACRO_MONEY)
+            b = col_c2.number_input("Burn Rate Mensal", value=1000.0, step=STEP_MACRO_MONEY)
             p_pace = col_c3.slider("Pace (Un/Mês)", 0.5, 5.0, 2.0)
             impacto_calculado_cat = (u / p_pace) * b
         elif cat_impacto == "Retrabalho (Escopo)":
-            h = col_c1.number_input("H/H Estimada", value=200, step=STEP_RESOURCE)
-            c = col_c2.number_input("Custo H/H", value=180.0, step=STEP_MONEY)
+            h = col_c1.number_input("H/H Estimada", value=150, step=STEP_RESOURCE)
+            c = col_c2.number_input("Custo H/H", value=150.0, step=STEP_MONEY)
             impacto_calculado_cat = h * c
         elif cat_impacto == "Instabilidade (Bugs)":
-            q = col_c1.number_input("Qtd de Chamados", value=50, step=STEP_RESOURCE)
+            q = col_c1.number_input("Qtd de Chamados", value=10, step=STEP_RESOURCE)
             t = col_c2.number_input("Média Horas/Bug", value=8, step=STEP_RESOURCE)
             impacto_calculado_cat = q * t * 145.0
         elif cat_impacto == "Infraestrutura (Ociosidade)":
             d = col_c1.number_input("Dias de Bloqueio", value=5, step=STEP_RESOURCE)
-            cd = col_c2.number_input("Custo Diário", value=12000.0, step=STEP_MACRO_MONEY)
+            cd = col_c2.number_input("Custo Diário", value=1000.0, step=STEP_MACRO_MONEY)
             impacto_calculado_cat = d * cd
 
     # 2. GESTÃO DE RECURSOS (CRUD)
-    st.subheader("2. Gestão de Staffing Adicional")
+    st.subheader("2. Gestão de Recurso Adicional")
     with st.expander("➕ Vincular Novo Recurso"):
         with st.form("add_rec", clear_on_submit=True):
             f1, f2, f3 = st.columns([2,1,1])
-            func = f1.selectbox("Função", ["Consultor Sr", "Analista Pl", "Arquiteto", "Dev", "PMO"])
-            custo_h = f2.number_input("Custo/H", value=140.0, step=STEP_MONEY)
-            horas_a = f3.number_input("Horas", value=160, step=STEP_RESOURCE)
+            func = f1.selectbox("Função", ["Consultor Jr","Consultor Pl","Consultor Sr","Analista Jr", "Analista Pl","Analista Sr", "Gerente de projeto Jr","Gerente de projeto Pl","Gerente de projeto Sr", "Desenvolvedor Jr", "Desenvolvedor Pl", "Desenvolvedor Sr"])
+            custo_h = f2.number_input("Custo/H", value=150.0, step=STEP_MONEY)
+            horas_a = f3.number_input("Horas", value=10, step=STEP_RESOURCE)
             if st.form_submit_button("Adicionar"):
                 db_conn.execute("INSERT INTO recursos (projeto, funcao, custo_h, horas, subtotal) VALUES (?,?,?,?,?)",
                              (proj, func, custo_h, horas_a, custo_h * horas_a))
