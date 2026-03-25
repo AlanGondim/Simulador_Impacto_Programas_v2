@@ -8,23 +8,23 @@ from fpdf import FPDF
 from datetime import datetime, timedelta
 import tempfile
 import os
+import json
 
-# --- CONFIGURAÇÕES DE INTERFACE (ESTILO EXECUTIVO) ---
+# --- CONFIGURAÇÕES DE INTERFACE ---
 def local_css():
     st.markdown("""
     <style>
-        .main { background-color: #f4f7f6; }
-        .stMetric { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-top: 4px solid #00bfa5; }
-        .header-box { background-color: white; padding: 25px; border-radius: 12px; border-left: 8px solid #003366; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .section-header { color: #003366; font-weight: bold; margin-top: 25px; margin-bottom: 15px; font-size: 1.4rem; display: flex; align-items: center; }
-        .card-impacto { background: white; padding: 20px; border-radius: 10px; border: 1px solid #e0e0e0; }
-        .delta-pert { color: #b8860b; font-weight: bold; font-size: 0.9em; }
+        .main { background-color: #f8f9fa; }
+        .stMetric { background-color: white; padding: 15px; border-radius: 8px; border-top: 4px solid #003366; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .header-box { background-color: white; padding: 20px; border-radius: 10px; border-left: 10px solid #003366; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .section-header { color: #003366; font-weight: bold; margin-top: 30px; border-bottom: 2px solid #e0e0e0; padding-bottom: 5px; font-size: 1.2rem; }
+        .sidebar .sidebar-content { background-image: linear-gradient(#2e7d32,#2e7d32); color: white; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- ENGINE DE DADOS ---
 def init_db():
-    conn = sqlite3.connect('pmo_enterprise_v2.db', check_same_thread=False)
+    conn = sqlite3.connect('pmo_elite_v2.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS matriz_alocacao 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, projeto TEXT, cargo TEXT, nivel TEXT, 
@@ -34,216 +34,248 @@ def init_db():
 
 db_conn = init_db()
 
-# --- CLASSE PDF PROFISSIONAL COM GRÁFICOS ---
-class RelatorioExecutivo(FPDF):
+# --- CLASSE PDF PROFISSIONAL ---
+class RelatorioElite(FPDF):
     def header(self):
-        self.set_font('Arial', 'B', 12)
+        # 0.0 e 0.1 Cabeçalho
+        self.set_font('Arial', 'B', 14)
         self.set_text_color(0, 51, 102)
-        self.cell(0, 10, 'RELATÓRIO PMO - ANÁLISE DE IMPACTO (ESTRITAMENTE CONFIDENCIAL)', 0, 1, 'R')
-        self.line(10, 20, 200, 20)
-        self.ln(10)
+        self.cell(10, 10, 'R', 0, 0, 'L') # Placeholder para ícone
+        self.cell(0, 10, 'Relatorio PMO PROGRAMAS - Analise de Impacto Financeiro', 0, 1, 'L')
+        self.set_draw_color(0, 51, 102)
+        self.line(10, 22, 200, 22)
+        self.ln(5)
 
     def footer(self):
+        self.set_y(-30)
+        self.set_font('Arial', 'B', 8)
+        self.set_draw_color(180, 180, 180)
+        # Campos de Assinatura
+        self.line(20, self.get_y(), 80, self.get_y())
+        self.line(130, self.get_y(), 190, self.get_y())
+        self.cell(90, 10, 'Assinatura Diretor de Operacoes', 0, 0, 'C')
+        self.cell(90, 10, 'Assinatura Gerencia de Operacoes', 0, 1, 'C')
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f'Página {self.page_no()} | Diretoria de Operações - MV', 0, 0, 'C')
+        self.set_font('Arial', 'I', 7)
+        self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL - PMO OFFICE', 0, 0, 'C')
 
     def add_watermark(self):
-        self.set_font('Arial', 'B', 40)
-        self.set_text_color(240, 240, 240)
-        # Salva o estado atual para rotação
+        self.set_font('Arial', 'B', 45)
+        self.set_text_color(245, 245, 245)
         with self.rotation(45, 100, 150):
-            self.text(30, 190, 'C O N F I D E N C I A L')
+            self.text(40, 190, 'C O N F I D E N C I A L')
 
-# --- FUNÇÕES DE CÁLCULO ---
+# --- FUNÇÕES DE SUPORTE ---
 def format_brl(val):
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def gerar_lista_meses(data_inicio, horizonte):
-    meses = []
-    for i in range(horizonte):
-        target_date = (data_inicio.replace(day=1) + timedelta(days=i*31)).replace(day=1)
-        meses.append(target_date.strftime("%b. de %y").lower())
-    return meses
+def get_meses_list(start_date, months):
+    return [(start_date.replace(day=1) + timedelta(days=31*i)).strftime("%b/%y").upper() for i in range(months)]
 
-# --- INTERFACE PRINCIPAL ---
-st.set_page_config(page_title="PMO Impact Analysis", layout="wide")
+# --- INTERFACE ---
+st.set_page_config(page_title="PMO Elite Impact", layout="wide")
 local_css()
 
-col_h1, col_h2 = st.columns([0.7, 0.3])
-with col_h1:
-    st.markdown(f"""
-    <div class="header-box">
-        <h1 style="margin:0; color:#1a237e;">Relatório PMO - Análise de Impacto</h1>
-        <p style="margin:0; color:#546e7a; font-size:1.1rem;">Estimativa Paramétrica, Matriz de Alocação e Análise de DRE</p>
-    </div>
-    """, unsafe_allow_html=True)
-with col_h2:
-    st.write("")
-    if st.button("🧹 Limpar Todos os Dados"):
-        db_conn.execute("DELETE FROM matriz_alocacao")
-        db_conn.commit()
-        st.rerun()
+# 0.0 & 0.1
+st.markdown(f"""
+<div class="header-box">
+    <h2 style="margin:0; color:#003366;">📑 Relatório PMO PROGRAMAS - Análise de Impacto Financeiro</h2>
+</div>
+""", unsafe_allow_html=True)
 
-# 1. INFORMAÇÕES DO PROJETO
-st.markdown('<div class="section-header">🏢 Informações do Projeto</div>', unsafe_allow_html=True)
+# 1. INFORMAÇÕES DO PROGRAMA
+st.markdown('<div class="section-header">1. Informações do Programa</div>', unsafe_allow_html=True)
 with st.container(border=True):
     c1, c2 = st.columns(2)
-    nome_proj = c1.text_input("NOME DO PROJETO", value=" ")
-    gp_resp = c2.text_input("RESPONSÁVEL (GP)", value=" ")
-    justificativa = st.text_area("JUSTIFICATIVA DA MUDANÇA / CONTEXTO", value=" ")
+    prog_nome = c1.text_input("Nome do Programa", value="Programa Modernização Logística")
+    prog_gerente = c2.text_input("Gerente do Programa", value="Carlos Andrade")
+    justificativa = st.text_area("Justificativa da mudança / contexto", "Ajuste de escopo regulatório e replanejamento de rollouts...")
 
-# 2. CENÁRIOS DE MUDANÇA
-st.markdown('<div class="section-header">🚀 Cenários da Mudança</div>', unsafe_allow_html=True)
-cenarios = st.tabs(["Rollout", "Retrabalho", "Bugs", "Infraestrutura"])
+# 2. CENÁRIOS DE MUDANÇA (Ride and Show)
+st.markdown('<div class="section-header">2. Cenário de Mudança</div>', unsafe_allow_html=True)
+abas_cenario = st.tabs(["Rollout", "Escopo (Retrabalho)", "Bugs (Instabilidade)", "Infra (Ociosidade)"])
 
-with cenarios[0]:
-    col_r1, col_r2 = st.columns(2)
-    escopo_rest = col_r1.number_input("ESCOPO RESTANTE (QTD. ROLLOUTS)", value=11)
-    baseline_vel = col_r2.number_input("BASELINE (VEL.)", value=5.5)
-    st.markdown("---")
-    st.write("**ESTIMATIVA DE VELOCIDADE (ROLLOUTS/MÊS)**")
-    v1, v2, v3 = st.columns(3)
-    v_otm = v1.number_input("OTIMISTA", value=6.0, key="v_otm")
-    v_pro = v2.number_input("PROVÁVEL", value=6.0, key="v_pro")
-    v_pes = v3.number_input("PESSIMISTA", value=4.0, key="v_pes")
+with abas_cenario[0]: # Rollout
+    c_r1, c_r2, c_r3 = st.columns(3)
+    v_otm = c_r1.number_input("Otimista", value=6.0)
+    v_pro = c_r2.number_input("Provável", value=5.0)
+    v_pes = c_r3.number_input("Pessimista", value=3.0)
     vel_pert = (v_otm + 4*v_pro + v_pes) / 6
+    st.info(f"Velocidade PERT Calculada: {vel_pert:.2f} rollouts/mês")
 
 # 3. MATRIZ DE ALOCAÇÃO
-st.markdown('<div class="section-header">1. Matriz de Alocação & Orçamento</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">3. Matriz de Alocação e Orçamento</div>', unsafe_allow_html=True)
 with st.container(border=True):
-    m_col1, m_col2, m_col3 = st.columns([1, 1, 1])
-    data_inicio = m_col1.date_input("INÍCIO DO EVENTO/IMPACTO", value=datetime(2026, 1, 19))
-    horizonte = m_col2.number_input("MESES (HORIZONTE)", min_value=1, value=1)
-    lista_meses = gerar_lista_meses(data_inicio, horizonte)
+    m1, m2 = st.columns(2)
+    data_ini = m1.date_input("Início do Evento/Impacto", value=datetime.now())
+    horizonte = m2.number_input("Meses (Horizonte)", min_value=1, value=4)
+    lista_meses = get_meses_list(data_ini, horizonte)
 
-    with st.expander("ADICIONAR RECURSO AO ORÇAMENTO", expanded=True):
-        f1, f2, f3, f4, f5, f6 = st.columns([2, 2, 1.5, 1.5, 1.5, 1])
-        cargo_add = f1.selectbox("CARGO", ["Consultor", "Gerente", "Analista", "Desenvolvedor"])
-        nivel_add = f2.selectbox("NÍVEL", ["Junior", "Pleno", "Senior", "N/A"])
-        reg_add = f3.text_input("REGIONAL/CC", value="N/A")
-        taxa_h_add = f4.number_input("TAXA/HORA (R$)", value=150.0)
-        hrs_base_add = f5.number_input("HRS/MÊS (BASE)", value=160)
-        if f6.button("+ ADICIONAR"):
-            h_dist = {m: hrs_base_add for m in lista_meses}
-            total_r = sum(h_dist.values()) * taxa_h_add
+    with st.expander("➕ Adicionar Recurso ao Orçamento", expanded=True):
+        f1, f2, f3 = st.columns(3)
+        cargo = f1.selectbox("Cargo", ["Analista", "Consultor", "Especialista", "Gerente", "Desenvolvedor"])
+        nivel = f2.selectbox("Nível", ["Junior", "Pleno", "Senior"])
+        reg_cc = f3.text_input("Regional / Centro de Custo", "CC-OPER-01")
+        
+        f4, f5, f6 = st.columns(3)
+        taxa_h = f4.number_input("Taxa/Hora R$", value=150.0)
+        hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
+        if f6.button("ADICIONAR RECURSO"):
+            h_dist = {m: hrs_base for m in lista_meses}
+            total_r = sum(h_dist.values()) * taxa_h
             db_conn.execute("INSERT INTO matriz_alocacao (projeto, cargo, nivel, reg, taxa, horas_json, total) VALUES (?,?,?,?,?,?,?)",
-                         (nome_proj, cargo_add, nivel_add, reg_add, taxa_h_add, str(h_dist), total_r))
+                         (prog_nome, cargo, nivel, reg_cc, taxa_h, json.dumps(h_dist), total_r))
             db_conn.commit()
             st.rerun()
 
-    df_matriz = pd.read_sql_query(f"SELECT * FROM matriz_alocacao WHERE projeto='{nome_proj}'", db_conn)
+    df_matriz = pd.read_sql_query(f"SELECT * FROM matriz_alocacao WHERE projeto='{prog_nome}'", db_conn)
     if not df_matriz.empty:
-        for idx, row in df_matriz.iterrows():
-            col_res = st.columns([3, 2, 2, 2, 1])
-            col_res[0].write(f"**{row['cargo']}** ({row['nivel']})")
-            col_res[1].write(f"Reg: {row['reg']}")
-            col_res[2].write(f"Taxa: {format_brl(row['taxa'])}")
-            col_res[3].write(f"**Total: {format_brl(row['total'])}**")
-            if col_res[4].button("🗑️", key=f"del_{row['id']}"):
-                db_conn.execute(f"DELETE FROM matriz_alocacao WHERE id={row['id']}")
-                db_conn.commit()
-                st.rerun()
+        # Pivotar para mostrar meses como colunas
+        st.dataframe(df_matriz[['cargo', 'nivel', 'reg', 'taxa', 'total']], use_container_width=True)
+        custo_base_total = df_matriz['total'].sum()
+        st.metric("Orçamento Total da Equipe", format_brl(custo_base_total))
 
-# 4. DRE E GRÁFICOS
-st.markdown('<div class="section-header">📊 Análise de Margem e Impacto Financeiro</div>', unsafe_allow_html=True)
-custo_total_matriz = df_matriz['total'].sum() if not df_matriz.empty else 0.0
+# 4. RESERVA E PERT
+st.markdown('<div class="section-header">4. Análise de Riscos e PERT</div>', unsafe_allow_html=True)
+delta_pert_risco = 0.15 # Exemplo de desvio padrão PERT 15%
+reserva_risco = custo_base_total * delta_pert_risco
+total_cenario = custo_base_total + reserva_risco
 
-with st.container(border=True):
-    col_d1, col_d2, col_d3 = st.columns(3)
-    receita_liq = col_d1.number_input("RECEITA LÍQUIDA ATUAL", value=1000.0)
-    custo_eac = col_d2.number_input("CUSTO TOTAL ATUAL (EAC)", value=1000.0)
-    
-    margem_atual = (1 - (custo_eac/receita_liq)) * 100
-    novo_eac = custo_eac + custo_total_matriz
-    margem_projetada = (1 - (novo_eac/receita_liq)) * 100
-    erosao = margem_atual - margem_projetada
+r1, r2, r3 = st.columns(3)
+r1.metric("Custo Baseline (Sem Risco)", format_brl(custo_base_total))
+r2.metric("Reserva de Risco (Delta PERT)", format_brl(reserva_risco), delta="Impacto Adicional")
+r3.metric("Orçamento Total (Base + 95%)", format_brl(total_cenario))
 
-    d_res1, d_res2, d_res3 = st.columns(3)
-    d_res1.metric("MARGEM ATUAL", f"{margem_atual:.1f}%")
-    d_res2.metric("PROJETADA", f"{margem_projetada:.1f}%", delta=f"-{erosao:.1f} p.p.", delta_color="inverse")
-    d_res3.markdown(f"""<div style="text-align:center; padding:10px; background:#fff5f5; border-radius:10px; color:#c62828; border:1px solid #ef9a9a;">Erosão: {format_brl(custo_total_matriz)}</div>""", unsafe_allow_html=True)
+# 5. IMPACTO MENSAL
+st.markdown('<div class="section-header">5. Impacto Mensal na Margem</div>', unsafe_allow_html=True)
+mes_impacto = lista_meses[0]
+st.write(f"Projeção baseada no mês de impacto: **{mes_impacto}**")
+# Simulação de acumulado
+df_mensal = pd.DataFrame({
+    'Mês': lista_meses,
+    'Custo Evento': [total_cenario/horizonte]*horizonte
+})
+df_mensal['Acumulado'] = df_mensal['Custo Evento'].cumsum()
+st.table(df_mensal.style.format({'Custo Evento': format_brl, 'Acumulado': format_brl}))
 
-col_g1, col_g2 = st.columns(2)
+# 6. TRÍPLICE RESTRIÇÃO
+st.markdown('<div class="section-header">6. Análise Integrada: Tríplice de Restrição</div>', unsafe_allow_html=True)
+col_g1, col_g2 = st.columns([0.4, 0.6])
 with col_g1:
-    categories = ['Custo', 'Prazo', 'Escopo']
-    fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(r=[80, 70, 90, 80], theta=categories+['Custo'], fill='toself', name='Baseline'))
-    fig_radar.add_trace(go.Scatterpolar(r=[100, 95, 95, 100], theta=categories+['Custo'], fill='toself', name='Impacto'))
-    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False)), height=350, title="Triângulo de Ferro")
-    st.plotly_chart(fig_radar, use_container_width=True)
+    categories = ['Custo', 'Escopo', 'Tempo']
+    fig_tri = go.Figure()
+    fig_tri.add_trace(go.Scatterpolar(r=[80, 80, 80, 80], theta=categories+['Custo'], fill='toself', name='Baseline'))
+    fig_tri.add_trace(go.Scatterpolar(r=[100, 110, 120, 100], theta=categories+['Custo'], fill='toself', name='Impacto'))
+    fig_tri.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=True, title="Triângulo de Restrição")
+    st.plotly_chart(fig_tri, use_container_width=True)
 
-with col_g2:
-    df_hist = pd.DataFrame({
-        'Categoria': ['Baseline', 'Impacto Real', 'Risco'],
-        'Valor': [custo_eac, custo_total_matriz, custo_total_matriz*0.3]
-    })
-    # CORREÇÃO DO ERRO: color_discrete_map em vez de color_manual
-    fig_hist = px.bar(df_hist, x='Categoria', y='Valor', color='Categoria',
-                     color_discrete_map={'Baseline':'#455a64', 'Impacto Real':'#d32f2f', 'Risco':'#fbc02d'})
-    fig_hist.update_layout(height=350, title="Histograma de Custos")
-    st.plotly_chart(fig_hist, use_container_width=True)
+# 7. DRE E MARGEM FINAL
+st.markdown('<div class="section-header">7. DRE do Programa: Análise de Margem Final</div>', unsafe_allow_html=True)
+with st.container(border=True):
+    d1, d2, d3 = st.columns(3)
+    margem_meta = d1.number_input("Margem Meta %", value=35.0)
+    receita_liq = d2.number_input("Receita Líquida Atual", value=5000000.0)
+    custo_eac_atual = d3.number_input("Custo Total Atual (EAC)", value=3250000.0)
 
-# --- NOVO BLOCO DE GERAÇÃO DO PDF (CORRIGIDO) ---
-if st.sidebar.button("📊 GERAR DOSSIÊ COMPLETO"):
-    pdf = RelatorioExecutivo()
+    margem_atual = (1 - (custo_eac_atual/receita_liq)) * 100
+    novo_eac = custo_eac_atual + total_cenario
+    margem_final = (1 - (novo_eac/receita_liq)) * 100
+    erosao = margem_atual - margem_final
+
+    st.divider()
+    res1, res2, res3 = st.columns(3)
+    res1.metric("Margem Atual", f"{margem_atual:.2f}%")
+    res2.metric("Margem Projetada (Total)", f"{margem_final:.2f}%", delta=f"-{erosao:.2f}%", delta_color="inverse")
+    res3.metric("Erosão de Margem", f"{erosao:.2f} p.p.")
+
+# 8. GRÁFICO DE EROSÃO
+st.markdown('<div class="section-header">8. Visualização de Erosão de Custos</div>', unsafe_allow_html=True)
+df_erosao = pd.DataFrame({
+    'Cenário': ['EAC Atual', 'Impacto Base', 'Impacto + Risco'],
+    'Valor': [custo_eac_atual, custo_base_total, total_cenario]
+})
+fig_bar = px.bar(df_erosao, x='Cenário', y='Valor', text_auto='.2s', color='Cenário',
+                 color_discrete_sequence=['#455a64', '#00bfa5', '#d32f2f'])
+st.plotly_chart(fig_bar, use_container_width=True)
+
+# --- 9. GERAÇÃO DE PDF DE ELITE (CORREÇÃO DE ERRO DE TRANSFORM) ---
+if st.sidebar.button("📦 GERAR DOSSIÊ EXECUTIVO (PDF)"):
+    pdf = RelatorioElite()
     pdf.add_page()
     pdf.add_watermark()
     
     # 1. Informações do Programa
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, " 1. INFORMACOES DO PROGRAMA", 0, 1, 'L', fill=True)
+    pdf.set_fill_color(0, 51, 102)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 10, " 1. INFORMAÇÕES DO PROGRAMA", 0, 1, 'L', fill=True)
+    
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font('Arial', '', 10)
-    pdf.cell(0, 8, f"Programa: {nome_proj} | GP: {gp_resp}", 0, 1)
-    pdf.multi_cell(0, 8, f"Justificativa: {justificativa.encode('latin-1', 'ignore').decode('latin-1')}")
-    
-    # 2. Matriz de Alocação
+    pdf.ln(2)
+    pdf.cell(0, 8, f"Nome: {prog_nome.upper()}", 0, 1)
+    pdf.cell(0, 8, f"Gerente: {prog_gerente}", 0, 1)
+    pdf.set_font('Arial', 'I', 10)
+    pdf.multi_cell(0, 6, f"Contexto Estrategico: {justificativa.encode('latin-1', 'ignore').decode('latin-1')}")
     pdf.ln(5)
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, " 2. MATRIZ DE ALOCACAO ADICIONAL", 0, 1, 'L', fill=True)
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(50, 8, "Cargo", 1); pdf.cell(40, 8, "Regiao", 1); pdf.cell(50, 8, "Impacto Financeiro", 1, 1)
-    pdf.set_font('Arial', '', 9)
-    for _, r in df_matriz.iterrows():
-        pdf.cell(50, 8, r['cargo'], 1)
-        pdf.cell(40, 8, r['reg'], 1)
-        pdf.cell(50, 8, format_brl(r['total']), 1, 1)
     
-    # 3. Inclusão de Gráficos (USANDO ENGINE 'JSON' OU BYTES PARA EVITAR KALEIDO)
-    # Tentamos converter para imagem. Se o Kaleido falhar, avisamos o usuário.
+    # 2. Matriz e Impacto
+    pdf.set_fill_color(0, 51, 102)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 10, " 2. MATRIZ E IMPACTO FINANCEIRO", 0, 1, 'L', fill=True)
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(0, 8, f"Custo Baseline: {format_brl(custo_base_total)}", 0, 1)
+    pdf.cell(0, 8, f"Reserva PERT (Risco): {format_brl(reserva_risco)}", 0, 1)
+    pdf.set_font('Arial', 'B', 10)
+    pdf.cell(0, 8, f"ORCAMENTO TOTAL PROJETADO: {format_brl(total_cenario)}", 0, 1)
+    pdf.ln(5)
+
+    # --- BLOCO DE GRÁFICOS COM FALLBACK PARA EVITAR VALUEERROR ---
     try:
-        pdf.ln(10)
-        curr_y = pdf.get_y()
-        
-        # Gerar imagens como bytes primeiro (contorno para o erro de 'tabs')
-        img_radar_bytes = fig_radar.to_image(format="png", width=600, height=450, engine="kaleido")
-        img_hist_bytes = fig_hist.to_image(format="png", width=600, height=450, engine="kaleido")
+        # Tentativa de gerar imagens usando o motor estático
+        # Se o kaleido falhar, o script não trava o PDF
+        img_tri_bytes = fig_tri.to_image(format="png", width=600, height=450)
+        img_bar_bytes = fig_bar.to_image(format="png", width=600, height=450)
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
-            tmp1.write(img_radar_bytes)
-            pdf.image(tmp1.name, x=10, y=curr_y, w=90)
+            tmp1.write(img_tri_bytes)
+            pdf.image(tmp1.name, x=10, y=pdf.get_y(), w=90)
             
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-            tmp2.write(img_hist_bytes)
-            pdf.image(tmp2.name, x=105, y=curr_y, w=90)
-            
-        pdf.ln(70) # Espaço para os gráficos
+            tmp2.write(img_bar_bytes)
+            pdf.image(tmp2.name, x=105, y=pdf.get_y(), w=90)
+        pdf.ln(75)
     except Exception as e:
-        pdf.ln(10)
-        pdf.set_text_color(255, 0, 0)
-        pdf.cell(0, 10, "Erro ao renderizar graficos. Verifique a instalacao do Kaleido.", 0, 1)
+        pdf.set_font('Arial', 'I', 8)
+        pdf.set_text_color(150, 0, 0)
+        pdf.cell(0, 10, f" [Aviso: Graficos nao renderizados devido a restricoes de ambiente: {str(e)[:50]}]", 0, 1)
         pdf.set_text_color(0, 0, 0)
+        pdf.ln(5)
 
-    # 4. Parecer de Margem
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, " 3. PARECER DE MARGEM E EROSAO", 0, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 8, f"Margem Baseline: {margem_atual:.2f}%", 0, 1)
-    pdf.set_text_color(200, 0, 0)
-    pdf.cell(0, 8, f"Margem Projetada: {margem_projetada:.2f}%", 0, 1)
-    pdf.cell(0, 8, f"Custo Incremental Total: {format_brl(custo_total_matriz)}", 0, 1)
+    # 3. Análise de Margem (DRE)
+    pdf.set_fill_color(0, 51, 102)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 10, " 3. ANALISE DE MARGEM (DRE)", 0, 1, 'L', fill=True)
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(100, 8, f"Margem Meta: {margem_meta}%", 0, 0)
+    pdf.cell(0, 8, f"Margem Atual: {margem_atual:.2f}%", 0, 1)
+    
+    pdf.set_font('Arial', 'B', 10)
+    pdf.set_text_color(180, 0, 0)
+    pdf.cell(100, 8, f"Margem Projetada (Pos-Impacto): {margem_final:.2f}%", 0, 0)
+    pdf.cell(0, 8, f"EROSAO TOTAL: {erosao:.2f} p.p.", 0, 1)
 
-    pdf_bytes = pdf.output(dest='S')
-    st.sidebar.download_button("📥 Baixar Dossie Validado", data=bytes(pdf_bytes), file_name=f"Dossie_Impacto_{nome_proj}.pdf")
+    # Finalização
+    pdf_output = pdf.output(dest='S')
+    st.sidebar.download_button(
+        label="📥 BAIXAR RELATORIO DE ELITE",
+        data=bytes(pdf_output),
+        file_name=f"Dossie_Impacto_{prog_nome}.pdf",
+        mime="application/pdf"
+    )
