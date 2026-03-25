@@ -22,7 +22,59 @@ def local_css():
     </style>
     """, unsafe_allow_html=True)
 
-    # Função para Card de Métrica Customizado com Destaque em Vermelho
+   # --- ENGINE DE DADOS ---
+def init_db():
+    conn = sqlite3.connect('pmo_elite_v2.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS matriz_alocacao 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, projeto TEXT, cargo TEXT, nivel TEXT, 
+                  reg TEXT, taxa REAL, horas_json TEXT, total REAL)''')
+    conn.commit()
+    return conn
+
+db_conn = init_db()
+
+# --- CLASSE PDF PROFISSIONAL ---
+class RelatorioExecutivo(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 14)
+        self.set_text_color(0, 51, 102)
+        # Cabeçalho Institucional
+        self.cell(0, 10, 'DOSSIE DE IMPACTO FINANCEIRO E EROSAO DE MARGEM', 0, 1, 'C')
+        self.set_font('Arial', 'I', 9)
+        self.cell(0, 5, 'PMO CORPORATIVO - DIRETORIA DE OPERACOES', 0, 1, 'C')
+        self.ln(5)
+        self.set_draw_color(0, 51, 102)
+        self.set_line_width(0.8)
+        self.line(10, 28, 200, 28)
+        self.ln(10)
+
+    def footer(self):
+        self.set_y(-40)
+        self.set_font('Arial', 'B', 8)
+        # Campo de Assinaturas
+        self.set_draw_color(150, 150, 150)
+        self.line(20, self.get_y(), 90, self.get_y())
+        self.line(120, self.get_y(), 190, self.get_y())
+        self.cell(95, 8, 'Diretoria de Operacoes', 0, 0, 'C')
+        self.cell(95, 8, 'Gerencia do Programa', 0, 1, 'C')
+        
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 7)
+        self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL | Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 0, 'C')
+
+    def chapter_title(self, label):
+        self.set_font('Arial', 'B', 11)
+        self.set_fill_color(230, 230, 230)
+        self.set_text_color(0, 51, 102)
+        self.cell(0, 8, f" {label}", 0, 1, 'L', fill=True)
+        self.ln(3)
+
+# --- FUNÇÕES DE SUPORTE ---
+def format_brl(val):
+    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+ # Função para Card de Métrica Customizado com Destaque em Vermelho
 def metric_card_custom(label, value, delta_val):
     # Se o delta (erosão) for maior que 0, significa perda de margem -> Vermelho
     is_negative = delta_val > 0 
@@ -39,53 +91,6 @@ def metric_card_custom(label, value, delta_val):
         </div>
     </div>
     """, unsafe_allow_html=True)
-
-# --- ENGINE DE DADOS ---
-def init_db():
-    conn = sqlite3.connect('pmo_elite_v2.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS matriz_alocacao 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, projeto TEXT, cargo TEXT, nivel TEXT, 
-                  reg TEXT, taxa REAL, horas_json TEXT, total REAL)''')
-    conn.commit()
-    return conn
-
-db_conn = init_db()
-
-# --- CLASSE PDF PROFISSIONAL ---
-class RelatorioElite(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 14)
-        self.set_text_color(0, 51, 102)
-        # Ícone de relatório (simulado com texto/forma)
-        self.rect(10, 10, 6, 8, 'F') 
-        self.set_x(18)
-        self.cell(0, 10, 'Relatorio PMO PROGRAMAS - Analise de Impacto Financeiro', 0, 1, 'L')
-        self.set_draw_color(0, 51, 102)
-        self.line(10, 22, 200, 22)
-        self.ln(5)
-
-    def footer(self):
-        self.set_y(-30)
-        self.set_font('Arial', 'B', 8)
-        self.set_draw_color(180, 180, 180)
-        self.line(20, self.get_y(), 80, self.get_y())
-        self.line(130, self.get_y(), 190, self.get_y())
-        self.cell(90, 10, 'Diretor de Operacoes', 0, 0, 'C')
-        self.cell(90, 10, 'Gerencia de Operacoes', 0, 1, 'C')
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 7)
-        self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL - PMO PROGRAMAS', 0, 0, 'C')
-
-    def add_watermark(self):
-        self.set_font('Arial', 'B', 45)
-        self.set_text_color(245, 245, 245)
-        with self.rotation(45, 100, 150):
-            self.text(40, 190, 'C O N F I D E N C I A L')
-
-# --- FUNÇÕES DE SUPORTE ---
-def format_brl(val):
-    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def get_meses_list(start_date, months):
     return [(start_date.replace(day=1) + timedelta(days=31*i)).strftime("%b/%y").upper() for i in range(months)]
@@ -233,37 +238,60 @@ df_erosao = pd.DataFrame({'Cenário': ['Meta', 'Atual', 'Projetado'], 'Margem %'
 fig_bar = px.bar(df_erosao, x='Cenário', y='Margem %', text_auto='.2f', color='Cenário', color_discrete_sequence=['#455a64', '#00bfa5', '#d32f2f'])
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# 9. GERAÇÃO DE PDF
-if st.sidebar.button("📊 GERAR ARQUIVO EM PDF"):
-    pdf = RelatorioElite()
+# --- GERAÇÃO DO PDF PARA VALIDAÇÃO ---
+if st.sidebar.button("📊 GERAR RELATÓRIO PARA ASSINATURA"):
+    pdf = RelatorioExecutivo()
     pdf.add_page()
-    pdf.add_watermark()
     
-    pdf.set_fill_color(0, 51, 102); pdf.set_font('Arial', 'B', 11); pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, " 1. INFORMACOES DO PROGRAMA", 0, 1, 'L', fill=True)
-    pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 10); pdf.ln(2)
-    pdf.cell(0, 8, f"Programa: {prog_nome.upper()}", 0, 1)
-    pdf.cell(0, 8, f"Gerente: {prog_gerente}", 0, 1)
-    pdf.multi_cell(0, 6, f"Contexto: {justificativa}")
+    # Capítulo 1: Identificação
+    pdf.chapter_title("1. IDENTIFICACAO DO PROGRAMA")
+    pdf.set_font('Arial', 'B', 9)
+    pdf.cell(40, 7, "Programa:"); pdf.set_font('Arial', '', 9); pdf.cell(0, 7, prog_nome, 0, 1)
+    pdf.set_font('Arial', 'B', 9); pdf.cell(40, 7, "Responsavel:"); pdf.set_font('Arial', '', 9); pdf.cell(0, 7, prog_gerente, 0, 1)
+    pdf.set_font('Arial', 'B', 9); pdf.cell(40, 7, "Justificativa:"); pdf.ln(7)
+    pdf.set_font('Arial', 'I', 9); pdf.multi_cell(0, 5, justificativa)
     pdf.ln(5)
-    
+
+    # Capítulo 2: Matriz de Alocação (O PONTO QUE FALTAVA)
+    pdf.chapter_title("2. DETALHAMENTO DA MATRIZ DE RECURSOS (EXTRA)")
+    pdf.set_font('Arial', 'B', 8)
     pdf.set_fill_color(0, 51, 102); pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, " 2. ANALISE FINANCEIRA E EROSAO", 0, 1, 'L', fill=True)
-    pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 10)
-    pdf.cell(0, 8, f"Custo Evento (Base + Risco): {format_brl(total_cenario)}", 0, 1)
-    pdf.cell(0, 8, f"Margem Atual: {margem_atual:.2f}% | Margem Projetada: {margem_final:.2f}%", 0, 1)
-    pdf.set_font('Arial', 'B', 10); pdf.set_text_color(180, 0, 0)
-    pdf.cell(0, 8, f"EROSAO DE MARGEM: {erosao:.2f} p.p.", 0, 1)
+    pdf.cell(50, 7, "Cargo / Perfil", 1, 0, 'C', True)
+    pdf.cell(40, 7, "Regional", 1, 0, 'C', True)
+    pdf.cell(30, 7, "Taxa/Hora", 1, 0, 'C', True)
+    pdf.cell(30, 7, "Horas Totais", 1, 0, 'C', True)
+    pdf.cell(40, 7, "Total Bruto", 1, 1, 'C', True)
     
-    try:
-        img_tri = fig_tri.to_image(format="png", width=500, height=400)
-        img_bar = fig_bar.to_image(format="png", width=500, height=400)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as t1, tempfile.NamedTemporaryFile(delete=False, suffix=".png") as t2:
-            t1.write(img_tri); t2.write(img_bar)
-            pdf.image(t1.name, x=10, y=pdf.get_y()+5, w=90)
-            pdf.image(t2.name, x=105, y=pdf.get_y()+5, w=90)
-    except:
-        pdf.cell(0, 10, "[Imagens indisponiveis no ambiente atual]", 0, 1)
+    pdf.set_font('Arial', '', 8); pdf.set_text_color(0, 0, 0)
+    for _, row in df_matriz.iterrows():
+        pdf.cell(50, 7, row['cargo'], 1)
+        pdf.cell(40, 7, row['reg'], 1, 0, 'C')
+        pdf.cell(30, 7, f"R$ {row['taxa']:.2f}", 1, 0, 'R')
+        pdf.cell(30, 7, str(160 * horizonte), 1, 0, 'C')
+        pdf.cell(40, 7, format_brl(row['total']), 1, 1, 'R')
+    
+    # Capítulo 3: Análise Financeira
+    pdf.ln(5)
+    pdf.chapter_title("3. ANALISE DE IMPACTO FINANCEIRO E RISCO")
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(100, 7, "Subtotal Recursos Adicionais:", 0, 0); pdf.cell(0, 7, format_brl(custo_base_total), 0, 1, 'R')
+    pdf.cell(100, 7, "Reserva de Risco (15% PERT):", 0, 0); pdf.cell(0, 7, format_brl(reserva_risco), 0, 1, 'R')
+    pdf.set_font('Arial', 'B', 10)
+    pdf.cell(100, 10, "VALOR TOTAL DO IMPACTO (A):", 0, 0); pdf.cell(0, 10, format_brl(total_cenario), 0, 1, 'R')
+    pdf.ln(5)
+
+    # Capítulo 4: DRE e Margem
+    pdf.chapter_title("4. IMPACTO NA MARGEM LIQUIDA (DRE)")
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(100, 7, "Margem de Lucro Baseline (Antes):", 0, 0); pdf.cell(0, 7, f"{margem_atual:.2f}%", 0, 1, 'R')
+    pdf.cell(100, 7, "Margem de Lucro Projetada (Depois):", 0, 0); pdf.cell(0, 7, f"{margem_final:.2f}%", 0, 1, 'R')
+    pdf.set_font('Arial', 'B', 10); pdf.set_text_color(180, 0, 0)
+    pdf.cell(100, 10, "EROSAO DE MARGEM DETECTADA:", 0, 0); pdf.cell(0, 10, f"{erosao:.2f} p.p.", 0, 1, 'R')
+    
+    # Espaço para Gráfico
+    pdf.ln(10)
+    pdf.set_text_color(0,0,0); pdf.set_font('Arial', 'I', 8)
+    pdf.cell(0, 10, "* Documento sujeito a revisao em caso de mudanca no escopo do incidente.", 0, 1, 'L')
 
     output = pdf.output(dest='S')
-    st.sidebar.download_button("📥 Baixar Dossiê PDF", data=bytes(output), file_name="Dossie_Impacto.pdf")
+    st.sidebar.download_button("📥 Baixar Dossiê para Validação", data=bytes(output), file_name="Dossie_Impacto_Oficial.pdf")
