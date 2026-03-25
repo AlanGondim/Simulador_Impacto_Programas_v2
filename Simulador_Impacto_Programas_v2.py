@@ -6,225 +6,194 @@ import plotly.graph_objects as go
 import plotly.express as px
 from fpdf import FPDF
 from datetime import datetime
-import io
+from dateutil.relativedelta import relativedelta
+import tempfile
 import os
 
-# --- CONFIGURAÇÕES DE ESCALA ---
-STEP_MONEY = 10.0
-STEP_MACRO_MONEY = 1000.0
-STEP_RESOURCE = 1
+# --- CONFIGURAÇÕES DE ESTILO ---
+def local_css():
+    st.markdown("""
+    <style>
+        .main { background-color: #f8f9fa; }
+        .stMetric { background-color: white; padding: 15px; border-radius: 10px; border-top: 4px solid #003366; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+        .header-box { background-color: white; padding: 20px; border-radius: 10px; border-left: 10px solid #003366; margin-bottom: 20px; }
+        .section-header { color: #003366; font-weight: bold; border-bottom: 2px solid #00bfa5; margin-bottom: 15px; padding-bottom: 5px; font-size: 1.3rem; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- DATABASE ENGINE ---
+# --- DATABASE ---
 def init_db():
-    conn = sqlite3.connect('pmo_master_enterprise.db', check_same_thread=False)
+    conn = sqlite3.connect('pmo_enterprise_v3.db', check_same_thread=False)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS recursos (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                 projeto TEXT, funcao TEXT, custo_h REAL, horas INTEGER, subtotal REAL)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS cenarios (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 projeto TEXT, nome_cenario TEXT, impacto_p95 REAL, margem REAL, data TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS matriz_alocacao 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, projeto TEXT, cargo TEXT, nivel TEXT, 
+                  taxa REAL, horas_json TEXT, total REAL)''')
     conn.commit()
     return conn
 
 db_conn = init_db()
 
-# --- FUNÇÕES CORE ---
+# --- CLASSE PDF EXECUTIVO ---
+class PDF_Relatorio(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 12)
+        self.set_text_color(0, 51, 102)
+        self.cell(0, 10, 'RELATORIO DE IMPACTO FINANCEIRO - PMO ENTERPRISE', 0, 1, 'R')
+        self.line(10, 25, 200, 25)
+        self.ln(10)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(150)
+        self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL - DIRETORIA DE OPERACOES', 0, 0, 'C')
+
+    def draw_watermark(self):
+        self.set_font('Arial', 'B', 50)
+        self.set_text_color(240, 240, 240)
+        self.rotate(45, 100, 150)
+        self.text(40, 190, 'CONFIDENCIAL')
+        self.rotate(0)
+
+# --- FUNÇÕES DE CÁLCULO ---
 def format_currency(val):
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def run_monte_carlo(o, m, p, n=5000):
-    if o >= p: return np.full(n, m), float(m), float(m)
-    sims = np.random.triangular(o, m, p, n)
-    return sims, float(np.mean(sims)), float(np.percentile(sims, 95))
+def get_month_list(start_date, count):
+    months = []
+    for i in range(count):
+        # Correção: relativedelta garante que não pule meses como Fevereiro
+        m = start_date + relativedelta(months=i)
+        months.append(m.strftime("%b/%y").lower())
+    return months
 
-# Classe PDF Executiva Master
-class ExecutivePDF(FPDF):
-    def header(self):
-        # Tenta incluir logo se existir
-        if os.path.exists("Logomarca MV Atualizada.png"):
-            self.image("Logomarca MV Atualizada.png", 10, 8, 33)
-        self.set_font('Arial', 'B', 14)
-        self.set_text_color(0, 51, 102)
-        self.cell(0, 10, 'DOSSIE DE IMPACTO FINANCEIRO - GOVERNANCA MV', 0, 1, 'R')
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 5, f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'R')
-        self.ln(15)
+# --- UI STREAMLIT ---
+st.set_page_config(page_title="PMO Intelligence Pro", layout="wide")
+local_css()
 
-    def chapter_title(self, label):
-        self.set_font('Arial', 'B', 12)
-        self.set_fill_color(230, 230, 230)
-        self.cell(0, 8, label, 0, 1, 'L', fill=True)
-        self.ln(4)
+# Cabeçalho
+st.markdown('<div class="header-box"><h1>📋 Gestão de Impacto e Erosão de Margem</h1><p>Diretoria de Operações | Relatório de Governança</p></div>', unsafe_allow_html=True)
 
-# --- INTERFACE ---
-st.set_page_config(page_title="MV PMO Intelligence PRO", layout="wide")
+# 1. SETUP DO PROGRAMA
+st.markdown('<div class="section-header">1. Informações Estratégicas</div>', unsafe_allow_html=True)
+col_a, col_b, col_c = st.columns([2, 1, 1])
+nome_proj = col_a.text_input("NOME DO PROGRAMA / PROJETO", value="Einstein - Rollout ACS")
+data_impacto = col_b.date_input("INÍCIO DO IMPACTO", value=datetime(2026, 3, 1))
+meses_horizonte = col_c.number_input("MESES (HORIZONTE)", min_value=1, max_value=12, value=4)
 
-with st.sidebar:
-    st.header("⚙️ Parâmetros do Programa")
-    proj = st.selectbox("Selecione o Projeto", [" ", "UNIMED SERRA GAUCHA", "INS", "CLINICA GIRASSOL", "EINSTEIN", "RHP"])
-    receita_net = st.number_input("Receita Líquida (R$)", value=4719147.0, step=STEP_MACRO_MONEY)
-    custo_eac_base = st.number_input("Custo Atual EAC (R$)", value=4963246.0, step=STEP_MACRO_MONEY)
+lista_meses_label = get_month_list(data_impacto, meses_horizonte)
 
-tab1, tab2, tab3 = st.tabs(["🚀 Simulação Ativa", "📊 Sensibilidade & Erosão", "📚 Hub de Cenários"])
-
-with tab1:
-    st.subheader("1. Categorias de Impacto Técnico")
-    cat_impacto = st.selectbox("Causa Raiz:", ["Replanejamento (Rollout)", "Retrabalho (Escopo)", "Instabilidade (Bugs)", "Infraestrutura (Ociosidade)"])
+# 2. MATRIZ DE ALOCAÇÃO & ORÇAMENTO
+st.markdown('<div class="section-header">2. Matriz de Alocação e Orçamento (Cenário)</div>', unsafe_allow_html=True)
+with st.container(border=True):
+    f1, f2, f3 = st.columns([2, 1, 1])
+    cargo_input = f1.selectbox("Função/Cargo", ["Consultor Senior", "Analista Pleno", "Gerente de Projetos", "Arquiteto de Soluções"])
+    taxa_input = f2.number_input("Taxa/Hora (R$)", value=185.0)
     
-    impacto_calculado_cat = 0.0
-    with st.container(border=True):
-        col_c1, col_c2, col_c3 = st.columns(3)
-        if cat_impacto == "Replanejamento (Rollout)":
-            u = col_c1.number_input("Unidades Restantes", value=10, step=STEP_RESOURCE)
-            b = col_c2.number_input("Burn Rate Mensal", value=150000.0, step=STEP_MACRO_MONEY)
-            p_pace = col_c3.slider("Pace (Un/Mês)", 0.5, 5.0, 2.0)
-            impacto_calculado_cat = (u / p_pace) * b
-        elif cat_impacto == "Retrabalho (Escopo)":
-            h = col_c1.number_input("H/H Estimada", value=200, step=STEP_RESOURCE)
-            c = col_c2.number_input("Custo H/H", value=180.0, step=STEP_MONEY)
-            impacto_calculado_cat = h * c
-        elif cat_impacto == "Instabilidade (Bugs)":
-            q = col_c1.number_input("Qtd de Chamados", value=50, step=STEP_RESOURCE)
-            t = col_c2.number_input("Média Horas/Bug", value=8, step=STEP_RESOURCE)
-            impacto_calculado_cat = q * t * 145.0
-        elif cat_impacto == "Infraestrutura (Ociosidade)":
-            d = col_c1.number_input("Dias de Bloqueio", value=5, step=STEP_RESOURCE)
-            cd = col_c2.number_input("Custo Diário", value=12000.0, step=STEP_MACRO_MONEY)
-            impacto_calculado_cat = d * cd
+    st.write("Distribuição de Horas Mensais:")
+    h_cols = st.columns(meses_horizonte)
+    horas_dict = {}
+    for idx, mes_lab in enumerate(lista_meses_label):
+        horas_dict[mes_lab] = h_cols[idx].number_input(f"{mes_lab}", value=160, key=f"h_{idx}")
 
-    st.subheader("2. Gestão de Recurso Adicional")
-    with st.expander("➕ Vincular Novo Recurso"):
-        with st.form("add_rec", clear_on_submit=True):
-            f1, f2, f3 = st.columns([2,1,1])
-            func = f1.selectbox("Função", ["Consultor Sr", "Analista Sr", "Gerente de Projeto Sr", "Desenvolvedor Sr", "Arquiteto de Soluções"])
-            custo_h = f2.number_input("Custo/H", value=185.0, step=STEP_MONEY)
-            horas_a = f3.number_input("Horas", value=160, step=STEP_RESOURCE)
-            if st.form_submit_button("Confirmar Alocação"):
-                db_conn.execute("INSERT INTO recursos (projeto, funcao, custo_h, horas, subtotal) VALUES (?,?,?,?,?)",
-                             (proj, func, custo_h, horas_a, custo_h * horas_a))
-                db_conn.commit()
-                st.rerun()
-
-    df_rec = pd.read_sql_query(f"SELECT * FROM recursos WHERE projeto = '{proj}'", db_conn)
-    custo_staff = df_rec['subtotal'].sum() if not df_rec.empty else 0.0
-    
-    if not df_rec.empty:
-        for idx, row in df_rec.iterrows():
-            with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([2,1,1,0.5])
-                c1.write(f"👤 **{row['funcao']}**")
-                c2.write(f"{row['horas']}h x {format_currency(row['custo_h'])}")
-                c3.write(f"**{format_currency(row['subtotal'])}**")
-                if c4.button("🗑️", key=f"del_{row['id']}"):
-                    db_conn.execute(f"DELETE FROM recursos WHERE id = {row['id']}")
-                    db_conn.commit()
-                    st.rerun()
-
-    st.divider()
-    m_nominal = impacto_calculado_cat + custo_staff
-    sims_data, val_mean, val_p95 = run_monte_carlo(m_nominal * 0.9, m_nominal, m_nominal * 1.6)
-    margem_original = (1 - (custo_eac_base / receita_net)) * 100 if receita_net > 0 else 0
-    margem_f = (1 - ((custo_eac_base + val_p95) / receita_net)) * 100 if receita_net > 0 else 0
-
-    res1, res2 = st.columns(2)
-    with res1:
-        st.metric("Impacto Financeiro P95 (Teto)", format_currency(val_p95), delta="Exposição Crítica")
-        st.metric("Margem Projetada Pós-Impacto", f"{margem_f:.2f}%", delta=f"{margem_f - margem_original:.2f}%", delta_color="inverse")
-        
-        if st.button("📑 Gerar Dossiê de Aprovação (PDF)"):
-            pdf = ExecutivePDF()
-            pdf.add_page()
-            
-            # Seção 1: Dados do Projeto
-            pdf.chapter_title("1. IDENTIFICACAO DO PROGRAMA")
-            pdf.set_font("Arial", "", 10)
-            data_info = [
-                ["Projeto Selecionado:", proj],
-                ["Receita Liquida (Net):", format_currency(receita_net)],
-                ["Custo EAC Atual:", format_currency(custo_eac_base)],
-                ["Margem Original:", f"{margem_original:.2f}%"]
-            ]
-            for row in data_info:
-                pdf.cell(50, 7, row[0], 0)
-                pdf.cell(0, 7, row[1], 0, 1)
-            pdf.ln(5)
-
-            # Seção 2: Análise de Impacto
-            pdf.chapter_title("2. ANALISE TECNICA DE IMPACTO")
-            pdf.set_font("Arial", "B", 10)
-            pdf.cell(0, 7, f"Causa Raiz Identificada: {cat_impacto}", 0, 1)
-            pdf.set_font("Arial", "", 10)
-            pdf.multi_cell(0, 7, f"O impacto nominal calculado baseado nos parâmetros inseridos é de {format_currency(m_nominal)}. "
-                                f"Considerando a volatilidade de mercado e riscos operacionais, o valor de exposição P95 (95% de confiança) é de {format_currency(val_p95)}.")
-            pdf.ln(5)
-
-            # Seção 3: Recursos Adicionais
-            if not df_rec.empty:
-                pdf.chapter_title("3. RECURSOS ADICIONAIS VINCULADOS")
-                pdf.set_font("Arial", "B", 9)
-                pdf.cell(80, 7, "Funcao", 1)
-                pdf.cell(40, 7, "Horas", 1)
-                pdf.cell(60, 7, "Subtotal", 1, 1)
-                pdf.set_font("Arial", "", 9)
-                for _, r in df_rec.iterrows():
-                    pdf.cell(80, 7, r['funcao'], 1)
-                    pdf.cell(40, 7, str(r['horas']), 1)
-                    pdf.cell(60, 7, format_currency(r['subtotal']), 1, 1)
-            
-            pdf.ln(10)
-            pdf.chapter_title("4. PARECER DE MARGEM E RISCO")
-            pdf.set_font("Arial", "B", 12)
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(0, 10, f"MARGEM PROJETADA FINAL: {margem_f:.2f}%", 0, 1, 'C')
-            
-            # Exportando PDF
-            pdf_bytes = pdf.output(dest='S')
-            pdf_final = pdf_bytes.encode('latin-1') if isinstance(pdf_bytes, str) else bytes(pdf_bytes)
-            st.download_button("📥 Baixar Dossiê Completo", data=pdf_final, file_name=f"Dossie_Impacto_{proj}.pdf", mime="application/pdf")
-
-    with res2:
-        # Radar Chart
-        fig_radar = go.Figure()
-        fig_radar.add_trace(go.Scatterpolar(r=[1,1,1,1], theta=['Custo','Prazo','Escopo','Custo'], fill='toself', name='Baseline'))
-        cost_idx = val_p95/(m_nominal*1.2) if m_nominal>0 else 1.1
-        fig_radar.add_trace(go.Scatterpolar(r=[cost_idx, 1.4, 1.3, cost_idx], theta=['Custo','Prazo','Escopo','Custo'], fill='toself', name='Impacto Real', line_color='red'))
-        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 2])), height=380, title="Triângulo de Ferro (Exposição)")
-        st.plotly_chart(fig_radar, use_container_width=True)
-
-with tab2:
-    st.header("🔍 Histograma de Erosão e Sensibilidade")
-    
-    c1, c2 = st.columns(2)
-    
-    with c1:
-        # Histograma de Monte Carlo (Erosão de Margem)
-        margens_simuladas = (1 - ((custo_eac_base + sims_data) / receita_net)) * 100
-        fig_hist = px.histogram(margens_simuladas, nbins=50, title="Histograma de Probabilidade: Margem Final",
-                               labels={'value': 'Margem (%)'}, color_discrete_sequence=['#003366'])
-        fig_hist.add_vline(x=margem_f, line_dash="dash", line_color="red", annotation_text="P95")
-        st.plotly_chart(fig_hist, use_container_width=True)
-        st.write(f"**Análise Visual:** A curva indica que há 95% de probabilidade da margem não cair abaixo de **{margem_f:.2f}%**.")
-
-    with c2:
-        # Gráfico de Composição
-        data_s = [{'Origem': f"Causa: {cat_impacto}", 'Valor': impacto_calculado_cat}]
-        if not df_rec.empty:
-            for _, r in df_rec.iterrows(): data_s.append({'Origem': r['funcao'], 'Valor': r['subtotal']})
-        
-        df_plot = pd.DataFrame(data_s)
-        fig_pie = px.sunburst(df_plot, path=['Origem'], values='Valor', title="Origem da Erosão Financeira", color='Valor', color_continuous_scale='Reds')
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-with tab3:
-    st.header("📚 Hub de Cenários de Governança")
-    nome_s = st.text_input("Protocolo do Snapshot (Ex: Ajuste Crítico V1):")
-    if st.button("💾 Protocolar Cenário"):
-        db_conn.execute("INSERT INTO cenarios (projeto, nome_cenario, impacto_p95, margem, data) VALUES (?,?,?,?,?)",
-                     (proj, nome_s, val_p95, margem_f, datetime.now().strftime("%d/%m %H:%M")))
+    if st.button("➕ Adicionar Recurso à Matriz"):
+        total_res = sum(horas_dict.values()) * taxa_input
+        db_conn.execute("INSERT INTO matriz_alocacao (projeto, cargo, nivel, taxa, horas_json, total) VALUES (?,?,?,?,?,?)",
+                     (nome_proj, cargo_input, "Nível III", taxa_input, str(horas_dict), total_res))
         db_conn.commit()
-        st.success("Snapshot salvo para auditoria.")
+        st.success("Recurso alocado!")
+        st.rerun()
+
+# Exibição da Matriz (Conforme padrão do Print)
+df_matriz = pd.read_sql_query(f"SELECT * FROM matriz_alocacao WHERE projeto='{nome_proj}'", db_conn)
+if not df_matriz.empty:
+    st.dataframe(df_matriz[['cargo', 'taxa', 'total']], use_container_width=True)
+    custo_baseline = df_matriz['total'].sum()
+else:
+    custo_baseline = 0.0
+
+# 3. ANÁLISE INTEGRADA (TRIÂNGULO E HISTOGRAMA)
+st.markdown('<div class="section-header">3. Análise Integrada e Triângulo de Ferro</div>', unsafe_allow_html=True)
+
+reserva_risco = custo_baseline * 0.15 # Adicional de 15% para cenário P95
+orcamento_total_cenario = custo_baseline + reserva_risco
+
+col_g1, col_g2 = st.columns(2)
+
+with col_g1:
+    # Radar Chart - Triângulo de Ferro
+    fig_radar = go.Figure()
+    fig_radar.add_trace(go.Scatterpolar(r=[1, 1, 1, 1], theta=['Custo','Prazo','Escopo','Custo'], fill='toself', name='Baseline'))
+    fig_radar.add_trace(go.Scatterpolar(r=[1.5, 1.3, 1.1, 1.5], theta=['Custo','Prazo','Escopo','Custo'], fill='toself', name='Com Impacto'))
+    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=True, title="Desvio do Triângulo de Ferro")
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+with col_g2:
+    # Histograma de Erosão (Correção color_discrete_map)
+    df_erosao = pd.DataFrame({
+        'Categoria': ['Baseline', 'Risco Adicional', 'Custo Total'],
+        'Valor': [custo_baseline, reserva_risco, orcamento_total_cenario]
+    })
+    fig_hist = px.bar(df_erosao, x='Categoria', y='Valor', color='Categoria',
+                     title="Histograma de Erosão de Custos",
+                     color_discrete_map={
+                         'Baseline': '#003366',
+                         'Risco Adicional': '#ff9800',
+                         'Custo Total': '#d32f2f'
+                     })
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+# 4. DRE DO PROGRAMA
+st.markdown('<div class="section-header">4. DRE do Programa: Análise de Margem</div>', unsafe_allow_html=True)
+receita_total = st.number_input("Receita Bruta do Contrato (R$)", value=5000000.0)
+margem_original = 35.0 # Meta
+
+custo_anterior = receita_total * (1 - (margem_original/100))
+novo_custo_total = custo_anterior + orcamento_total_cenario
+nova_margem = (1 - (novo_custo_total / receita_total)) * 100
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Impacto Mensal Margem", f"-{((margem_original - nova_margem)/meses_horizonte):.2f}%")
+c2.metric("Margem Final Projetada", f"{nova_margem:.2f}%", delta=f"{nova_margem - margem_original:.1f}%")
+c3.metric("Orçamento Total Cenário", format_currency(orcamento_total_cenario))
+
+# 5. EXPORTAÇÃO PDF
+if st.button("📑 Gerar Relatório PDF (Validação Diretoria)"):
+    pdf = PDF_Relatorio()
+    pdf.add_page()
+    pdf.draw_watermark()
+    
+    # Conteúdo PDF
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, f"Dossie de Impacto: {nome_proj}", 0, 1)
+    
+    pdf.set_font('Arial', '', 10)
+    pdf.ln(5)
+    pdf.cell(0, 8, f"Data da Analise: {datetime.now().strftime('%d/%m/%Y')}", 0, 1)
+    pdf.cell(0, 8, f"Orcamento Total Estimado: {format_currency(orcamento_total_cenario)}", 0, 1)
+    pdf.cell(0, 8, f"Erosao de Margem: {margem_original - nova_margem:.2f} pontos percentuais", 0, 1)
+    
+    # Salvar e Inserir Gráficos
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_radar:
+        fig_radar.write_image(tmp_radar.name)
+        pdf.image(tmp_radar.name, x=10, y=70, w=90)
         
-    st.subheader("Histórico de Simulações")
-    df_h = pd.read_sql_query(f"SELECT * FROM cenarios WHERE projeto = '{proj}'", db_conn)
-    st.dataframe(df_h[['nome_cenario', 'impacto_p95', 'margem', 'data']], use_container_width=True)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_hist:
+        fig_hist.write_image(tmp_hist.name)
+        pdf.image(tmp_hist.name, x=110, y=70, w=90)
+    
+    # Tabela de DRE no PDF
+    pdf.set_y(150)
+    pdf.set_fill_color(0, 51, 102)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(90, 10, "Indicador", 1, 0, 'C', True)
+    pdf.cell(90, 10, "Valor Projetado", 1, 1, 'C', True)
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(90, 10, "Receita de Contrato", 1); pdf.cell(90, 10, format_currency(receita_total), 1, 1)
+    pdf.cell(90, 10, "Custo Total (Base + Impacto)", 1); pdf.cell(90, 10, format_currency(novo_custo_total), 1, 1)
+    pdf.cell(90, 10, "Margem Final", 1); pdf.cell(90, 10, f"{nova_margem:.2f}%", 1, 1)
+
+    # Output
+    pdf_bytes = pdf.output(dest='S')
+    st.download_button(label="📥 Baixar Dossiê Completo (PDF)", data=bytes(pdf_bytes), file_name=f"Relatorio_PMO_{nome_proj}.pdf", mime="application/pdf")
