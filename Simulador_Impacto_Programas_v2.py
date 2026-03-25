@@ -22,6 +22,24 @@ def local_css():
     </style>
     """, unsafe_allow_html=True)
 
+    # Função para Card de Métrica Customizado com Destaque em Vermelho
+def metric_card_custom(label, value, delta_val):
+    # Se o delta (erosão) for maior que 0, significa perda de margem -> Vermelho
+    is_negative = delta_val > 0 
+    color = "#d32f2f" if is_negative else "#2e7d32"
+    bg_color = "#ffeeee" if is_negative else "#e8f5e9"
+    arrow = "↓" if is_negative else "↑"
+    
+    st.markdown(f"""
+    <div style="background-color: white; padding: 15px; border-radius: 8px; border-top: 4px solid {color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: left;">
+        <p style="color: #666; font-size: 14px; margin: 0;">{label}</p>
+        <h2 style="margin: 5px 0; color: #333;">{value}</h2>
+        <div style="background-color: {bg_color}; color: {color}; padding: 2px 8px; border-radius: 4px; display: inline-block; font-weight: bold; font-size: 14px;">
+            {arrow} {delta_val:.2f}%
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # --- ENGINE DE DADOS ---
 def init_db():
     conn = sqlite3.connect('pmo_elite_v2.db', check_same_thread=False)
@@ -37,7 +55,6 @@ db_conn = init_db()
 # --- CLASSE PDF PROFISSIONAL ---
 class RelatorioElite(FPDF):
     def header(self):
-        # Correção 0.0 e 0.1: Removido o "R" extra e ajustado conforme print
         self.set_font('Arial', 'B', 14)
         self.set_text_color(0, 51, 102)
         # Ícone de relatório (simulado com texto/forma)
@@ -200,10 +217,16 @@ with st.container(border=True):
 
     st.divider()
     res1, res2, res3 = st.columns(3)
-    res1.metric("Margem atual", f"{margem_atual:.2f}%")
-    res2.metric("Margem projetada total", f"{margem_final:.2f}%", delta=f"-{erosao:.2f}%", delta_color="inverse")
-    res3.metric("Erosão de Margem", f"{erosao:.2f} p.p.")
-
+    
+    with res1:
+        st.metric("Margem atual", f"{margem_atual:.2f}%")
+    
+    with res2:
+        # AQUI APLICA O DESTAQUE EM VERMELHO E SETA PARA BAIXO SE HOUVER EROSÃO
+        metric_card_custom("Margem projetada total", f"{margem_final:.2f}%", erosao)
+    
+    with res3:
+        st.metric("Erosão de Margem", f"{erosao:.2f} p.p.")
 # 8. GRÁFICO DE EROSÃO
 st.markdown('<div class="section-header">8. Gráfico da Erosão de Margem</div>', unsafe_allow_html=True)
 df_erosao = pd.DataFrame({'Cenário': ['Meta', 'Atual', 'Projetado'], 'Margem %': [margem_meta, margem_atual, margem_final]})
