@@ -165,7 +165,7 @@ with abas_cenario[3]:
         st.number_input("Horas de Ociosidade Estimadas", value=0)
         st.text_input("Recurso Ocioso")
 
-# 3. MATRIZ DE ALOCAÇÃO
+# --- 3. MATRIZ DE ALOCAÇÃO (COM REATIVIDADE) ---
 st.markdown('<div class="section-header">3. Matriz de Alocação e Orçamento</div>', unsafe_allow_html=True)
 with st.container(border=True):
     m1, m2 = st.columns(2)
@@ -190,66 +190,84 @@ with st.container(border=True):
             db_conn.commit()
             st.rerun()
 
-    # --- LÓGICA DE EDIÇÃO DINÂMICA ---
-    query = f"SELECT * FROM matriz_alocacao WHERE projeto='{prog_nome}'"
-    df_raw = pd.read_sql_query(query, db_conn)
+    df_raw = pd.read_sql_query(f"SELECT * FROM matriz_alocacao WHERE projeto='{prog_nome}'", db_conn)
 
     if not df_raw.empty:
-        # 1. Transformar JSON em colunas de meses
         df_edit = df_raw.copy()
         for mes in lista_meses:
             df_edit[mes] = df_edit['horas_json'].apply(lambda x: json.loads(x).get(mes, 0.0))
         
-        # Selecionar colunas para exibição
         cols_display = ['id', 'cargo', 'nivel', 'reg', 'taxa'] + lista_meses
         
-        st.write("💡 *Dica: Edite as horas dos meses ou a taxa diretamente na tabela. Marque a caixa 'Deletar' para remover.*")
-        
-        # 2. Editor de Dados (Streamlit Data Editor)
+        # EDITOR REATIVO
         edited_df = st.data_editor(
             df_edit[cols_display],
             column_config={
-                "id": None, # Esconde o ID
+                "id": None,
                 "taxa": st.column_config.NumberColumn("Taxa/Hora (R$)", format="R$ %.2f"),
                 **{mes: st.column_config.NumberColumn(f"Hrs {mes}", min_value=0) for mes in lista_meses}
             },
-            num_rows="dynamic", # Permite excluir linhas
+            num_rows="dynamic",
             use_container_width=True,
             key="editor_matriz"
         )
 
-        # 3. Processar alterações e salvar no Banco
-        if st.button("💾 ATUALIZAR MATRIZ (SALVAR ALTERAÇÕES)"):
-            # Identificar linhas deletadas (comparando com o original)
-            ids_atuais = edited_df['id'].tolist() if 'id' in edited_df.columns else []
+        # CÁLCULO EM TEMPO REAL (Baseado no conteúdo do editor)
+        # Multiplica taxa pelas colunas de meses para cada linha
+        horas_editadas = edited_df[lista_meses].sum(axis=1)
+        custo_base_total = (horas_editadas * edited_df['taxa']).sum()
+        
+        c_salvar, c_msg = st.columns([0.2, 0.8])
+        if c_salvar.button("💾 SALVAR ALTERAÇÕES"):
+            # Lógica de persistência (Delete/Update)
+            ids_atuais = edited_df['id'].tolist()
             ids_originais = df_raw['id'].tolist()
-            ids_para_deletar = [i for i in ids_originais if i not in ids_atuais]
-
-            # Deletar removidos
-            for idx in ids_para_deletar:
+            for idx in [i for i in ids_originais if i not in ids_atuais]:
                 db_conn.execute(f"DELETE FROM matriz_alocacao WHERE id = {idx}")
 
-            # Atualizar editados
-            for index, row in edited_df.iterrows():
-                # Reconstruir JSON de horas
-                new_h_dist = {mes: float(row[mes]) for mes in lista_meses}
-                new_total = sum(new_h_dist.values()) * row['taxa']
-                
-                db_conn.execute("""
-                    UPDATE matriz_alocacao 
-                    SET taxa = ?, horas_json = ?, total = ? 
-                    WHERE id = ?
-                """, (row['taxa'], json.dumps(new_h_dist), new_total, row['id']))
-            
+            for _, row in edited_df.iterrows():
+                h_json = json.dumps({mes: float(row[mes]) for mes in lista_meses})
+                tot_linha = sum([float(row[mes]) for mes in lista_meses]) * row['taxa']
+                db_conn.execute("UPDATE matriz_alocacao SET taxa=?, horas_json=?, total=? WHERE id=?", 
+                             (row['taxa'], h_json, tot_linha, row['id']))
             db_conn.commit()
-            st.success("Matriz atualizada com sucesso!")
             st.rerun()
+        c_msg.info("Os cálculos abaixo já refletem as edições da tabela em tempo real.")
 
-        custo_base_total = df_raw['total'].sum()
-        st.metric("Burn Rate Médio / Orçamento Total da Equipe", format_brl(custo_base_total))
     else:
         custo_base_total = 0.0
-        st.info("Nenhum recurso alocado ainda.")
+        st.info("Nenhum recurso alocado.")
+
+# --- 4. RISCOS E 7. DRE (UNIDOS PARA REATIVIDADE) ---
+st.markdown('<div class="section-header">4. Análise de Riscos e Orçamento Total</div>', unsafe_allow_html=True)
+delta_pert_risco = 0.15 
+reserva_risco = custo_base_total * delta_pert_risco
+total_cenario = custo_base_total + reserva_risco
+
+r1, r2, r3 = st.columns(3)
+r1.metric("Custo Estimado (Baseline)", format_brl(custo_base_total))
+r2.metric("Reserva de Risco (Delta PERT)", format_brl(reserva_risco))
+r3.metric("Orçamento Total (Base + Risco)", format_brl(total_cenario))
+
+st.markdown('<div class="section-header">7. DRE do Programa: Análise de margem final</div>', unsafe_allow_html=True)
+with st.container(border=True):
+    d1, d2, d3 = st.columns(3)
+    margem_meta = d1.number_input("Margem inicial (Meta) %", value=45.0, step=1.0)
+    receita_liq = d2.number_input("Receita líquida atual", min_value=1.0, value=5000.0, step=1000.0)
+    custo_eac_atual = d3.number_input("Custo total atual (EAC)", min_value=1.0, value=1000.0, step=1000.0)
+
+    # Cálculos reativos finais
+    margem_atual = (1 - (custo_eac_atual/receita_liq)) * 100
+    novo_eac = custo_eac_atual + total_cenario
+    margem_final = (1 - (novo_eac/receita_liq)) * 100
+    erosao = margem_atual - margem_final
+
+    st.divider()
+    res1, res2, res3 = st.columns(3)
+    res1.metric("Margem atual", f"{margem_atual:.2f}%")
+    with res2:
+        metric_card_custom("Margem projetada total", f"{margem_final:.2f}%", erosao)
+    res3.metric("Erosão de Margem", f"{erosao:.2f} p.p.")
 
 # 4. RESERVA E PERT
 st.markdown('<div class="section-header">4. Análise de Riscos e Orçamento Total</div>', unsafe_allow_html=True)
@@ -308,31 +326,6 @@ with col_g1:
     )
     st.plotly_chart(fig_tri, use_container_width=True)
 
-# 7. DRE E MARGEM FINAL
-st.markdown('<div class="section-header">7. DRE do Programa: Análise de margem final</div>', unsafe_allow_html=True)
-with st.container(border=True):
-    d1, d2, d3 = st.columns(3)
-    margem_meta = d1.number_input("Margem inicial (Meta) %", value=45.0, step=1.0)
-    receita_liq = d2.number_input("Receita líquida atual", min_value=1.0 , value=5000.0, step=1000.0)
-    custo_eac_atual = d3.number_input("Custo total atual (EAC)", min_value=1.0, value=1000.0, step=1000.0)
-
-    margem_atual = (1 - (custo_eac_atual/receita_liq)) * 100
-    novo_eac = custo_eac_atual + total_cenario
-    margem_final = (1 - (novo_eac/receita_liq)) * 100
-    erosao = margem_atual - margem_final
-
-    st.divider()
-    res1, res2, res3 = st.columns(3)
-    
-    with res1:
-        st.metric("Margem atual", f"{margem_atual:.2f}%")
-    
-    with res2:
-        # AQUI APLICA O DESTAQUE EM VERMELHO E SETA PARA BAIXO SE HOUVER EROSÃO
-        metric_card_custom("Margem projetada total", f"{margem_final:.2f}%", erosao)
-    
-    with res3:
-        st.metric("Erosão de Margem", f"{erosao:.2f} p.p.")
 # --- BOTÃO SALVAR E GERAR PDF ---
 if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     # 1. SALVAR NO BANCO SQL (Persistência do Resultado)
