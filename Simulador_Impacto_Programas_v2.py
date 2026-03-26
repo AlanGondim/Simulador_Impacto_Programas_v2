@@ -308,16 +308,15 @@ with col_g1:
     )
     st.plotly_chart(fig_tri, use_container_width=True)
 
-# --- BOTÃO SALVAR E GERAR PDF ---
+# --- BOTÃO SALVAR E GERAR PDF (TRECHO ATUALIZADO) ---
 if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
-    # 1. SALVAR NO BANCO SQL (Persistência do Resultado)
+    # 1. SALVAR NO BANCO SQL (Mantido igual)
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     db_conn.execute('''INSERT INTO resumo_impacto 
                        (data_geracao, projeto, custo_total, margem_antes, margem_depois, erosao) 
                        VALUES (?, ?, ?, ?, ?, ?)''', 
                     (agora, prog_nome, total_cenario, margem_atual, margem_final, erosao))
     db_conn.commit()
-    st.sidebar.success("Dados salvos no banco SQL!")
 
     # 2. GERAR PDF
     pdf = RelatorioExecutivo()
@@ -332,7 +331,7 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.set_font('Arial', 'I', 9); pdf.multi_cell(0, 5, contexto)
     pdf.ln(5)
 
-    # Capítulo 2: Matriz de Alocação (CORRIGIDO: usando edited_df)
+    # Capítulo 2: Matriz de Alocação
     pdf.chapter_title("2. DETALHAMENTO DA MATRIZ DE RECURSOS")
     pdf.set_font('Arial', 'B', 8)
     pdf.set_fill_color(0, 51, 102); pdf.set_text_color(255, 255, 255)
@@ -377,74 +376,65 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.set_font('Arial', 'B', 10); pdf.set_text_color(180, 0, 0)
     pdf.cell(100, 10, "EROSAO DE MARGEM DETECTADA:", 0, 0); pdf.cell(0, 10, f"{erosao:.2f} p.p.", 0, 1, 'R')
     
-# --- CAPÍTULO 5: ANÁLISE GRÁFICA COMPARATIVA ---
+# --- CAPÍTULO 5: ANÁLISE GRÁFICA (COM TRATAMENTO DE ESPAÇO) ---
+    # Verifica se os gráficos cabem na página (precisamos de aprox. 80mm)
+    if pdf.get_y() > 180:
+        pdf.add_page()
+
     pdf.chapter_title("5. ANALISE GRAFICA: MARGEM E TRIPLICE DE RESTRICAO")
     
     try:
         y_graficos = pdf.get_y() + 5
-        largura_grafico = 72 # Tamanho idêntico para ambos
+        largura_grafico = 80 
         
-        # 1. HISTOGRAMA (Mesmo tamanho)
-        fig_hist, ax1 = plt.subplots(figsize=(5, 4)) # Aspect ratio controlado
-        cenarios = ['Baseline', 'Projetado']
-        valores = [margem_atual, margem_final]
-        bars = ax1.bar(cenarios, valores, color=['#003366', '#d32f2f'], width=0.6)
-        ax1.set_ylim(0, 110)
-        ax1.set_title("Erosao de Margem %", fontsize=12, fontweight='bold')
-        for bar in bars:
-            ax1.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 2, 
-                    f'{bar.get_height():.1f}%', ha='center', fontweight='bold')
-
+        # Gerar Histograma
+        fig_hist, ax1 = plt.subplots(figsize=(5, 3.5))
+        bars = ax1.bar(['Baseline', 'Projetado'], [margem_atual, margem_final], color=['#003366', '#d32f2f'])
+        ax1.set_ylim(0, max(margem_atual, margem_final) + 20)
+        ax1.set_title("Erosao de Margem %", fontsize=10, fontweight='bold')
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
-            plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=200)
-            plt.close(fig_hist)
-            pdf.image(tmp1.name, x=22, y=y_graficos, w=largura_grafico)
+            plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=150)
+            pdf.image(tmp1.name, x=15, y=y_graficos, w=largura_grafico)
+        plt.close(fig_hist)
 
-        # 2. RADAR (Mesmo tamanho)
-        fig_radar = plt.figure(figsize=(5, 4)) # Aspect ratio controlado igual ao de cima
+        # Gerar Radar
+        fig_radar = plt.figure(figsize=(5, 3.5))
         ax2 = fig_radar.add_subplot(111, polar=True)
+        # ... (lógica do radar mantida)
         categorias = ['Custo', 'Escopo', 'Tempo']
         angles = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
         angles += angles[:1]
-        
-        plan = [80, 80, 80, 80]; impct = [100, 110, 120, 100]
-        ax2.plot(angles, plan, color='#1f77b4', linewidth=2)
-        ax2.fill(angles, plan, color='#1f77b4', alpha=0.2)
-        ax2.plot(angles, impct, color='#d32f2f', linewidth=2)
-        ax2.fill(angles, impct, color='#d32f2f', alpha=0.4)
+        ax2.plot(angles, [80, 80, 80, 80], color='#1f77b4', linewidth=2)
+        ax2.fill(angles, [80, 80, 80, 80], color='#1f77b4', alpha=0.2)
+        ax2.plot(angles, [100, 110, 120, 100], color='#d32f2f', linewidth=2)
+        ax2.fill(angles, [100, 110, 120, 100], color='#d32f2f', alpha=0.4)
         ax2.set_thetagrids(np.degrees(angles[:-1]), categorias)
-        ax2.set_title("Triplice de Restricao", fontsize=12, fontweight='bold')
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=200)
-            plt.close(fig_radar)
-            pdf.image(tmp2.name, x=112, y=y_graficos, w=largura_grafico)
+            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=150)
+            pdf.image(tmp2.name, x=110, y=y_graficos, w=largura_grafico)
+        plt.close(fig_radar)
 
-        # Define posição segura após os gráficos
-        pdf.set_y(y_graficos + 55)
+        # --- REPOSICIONAMENTO PÓS-GRÁFICOS ---
+        # Definimos o Y abaixo da altura dos gráficos (y_graficos + altura da imagem)
+        pdf.set_y(y_graficos + 65) 
 
     except Exception as e:
         st.error(f"Erro nos gráficos: {e}")
 
-    # --- FINALIZAÇÃO E ASSINATURAS ---
+    # Conclusão Texto
     pdf.set_font('Arial', 'B', 10)
-    pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
+    pdf.multi_cell(0, 8, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
     
-    # Chama o novo método de assinaturas que fica no pé da página
+    # Assinaturas sempre no final do documento
     pdf.assinaturas()
 
-    # 4. DOWNLOAD DINÂMICO
+    # Download
     output = pdf.output(dest='S')
-    nome_arquivo = f"Relatorio_{prog_nome.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-    
     st.sidebar.download_button(
         label="📥 Baixar PDF Agora",
         data=bytes(output),
-        file_name=nome_arquivo,
+        file_name=f"Dossie_{prog_nome}.pdf",
         mime="application/pdf"
     )
-    
-    # Exibe o gráfico na tela do Streamlit apenas para visualização (Plotly na web não dá erro)
-    df_erosao = pd.DataFrame({'Cenário': ['Atual', 'Projetado'], 'Margem %': [margem_atual, margem_final]})
-    fig_web = px.bar(df_erosao, x='Cenário', y='Margem %', color='Cenário', range_y=[0, 100])
-    st.plotly_chart(fig_web)
