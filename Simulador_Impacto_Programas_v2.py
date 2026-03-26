@@ -131,7 +131,7 @@ with st.container(border=True):
     )
     
     prog_gerente = c2.text_input("Gerente do Programa", value="")
-    justificativa = st.text_area("Contexto da Mudança", "")
+    contexto = st.text_area("Contexto da Mudança", "")
 
 # 2. CENÁRIOS DE MUDANÇA (Ride and Show / Hide and Show)
 st.markdown('<div class="section-header">2. Cenário de Mudança</div>', unsafe_allow_html=True)
@@ -297,8 +297,8 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(40, 7, "Programa:"); pdf.set_font('Arial', '', 9); pdf.cell(0, 7, prog_nome, 0, 1)
     pdf.set_font('Arial', 'B', 9); pdf.cell(40, 7, "Responsavel:"); pdf.set_font('Arial', '', 9); pdf.cell(0, 7, prog_gerente, 0, 1)
-    pdf.set_font('Arial', 'B', 9); pdf.cell(40, 7, "Justificativa:"); pdf.ln(7)
-    pdf.set_font('Arial', 'I', 9); pdf.multi_cell(0, 5, justificativa)
+    pdf.set_font('Arial', 'B', 9); pdf.cell(40, 7, "Contexto:"); pdf.ln(7)
+    pdf.set_font('Arial', 'I', 9); pdf.multi_cell(0, 5, contexto)
     pdf.ln(5)
 
     # Capítulo 2: Matriz de Alocação (O PONTO QUE FALTAVA)
