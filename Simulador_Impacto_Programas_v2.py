@@ -114,7 +114,7 @@ st.markdown(f"""
 
 # --- LISTA DE PROGRAMAS ---
 LISTA_PROGRAMAS = [
-    "INS", "EINSTEIN", "CEMA", "MOGI", "RHP", 
+    " ", "INS", "EINSTEIN", "CEMA", "MOGI", "RHP", 
     "HCM", "HCS", "SoulBene Digital", "Girassol", "Bauru"
 ]
 
