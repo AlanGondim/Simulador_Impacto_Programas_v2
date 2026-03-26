@@ -323,35 +323,63 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.set_font('Arial', 'B', 10); pdf.set_text_color(180, 0, 0)
     pdf.cell(100, 10, "EROSAO DE MARGEM DETECTADA:", 0, 0); pdf.cell(0, 10, f"{erosao:.2f} p.p.", 0, 1, 'R')
     
-# --- CAPÍTULO 5: GRÁFICO (USANDO APENAS MATPLOTLIB PARA O PDF) ---
-    pdf.chapter_title("5. ANALISE GRAFICA DE MARGEM")
+# --- CAPÍTULO 5: ANÁLISE GRÁFICA COMPARATIVA ---
+    pdf.chapter_title("5. ANALISE GRAFICA: MARGEM E TRIPLICE DE RESTRICAO")
     
     try:
-        # 1. Gerar o gráfico com Matplotlib (Funciona 100% no Python 3.13)
-        fig_plt, ax = plt.subplots(figsize=(6, 3))
-        cenarios = ['Antes (Baseline)', 'Depois (Projetado)']
+        # Posição inicial para os gráficos
+        y_inicial = pdf.get_y() + 5
+
+        # --- GRÁFICO 1: HISTOGRAMA DE MARGEM (Esquerda) ---
+        fig_hist, ax1 = plt.subplots(figsize=(4, 3))
+        cenarios = ['Baseline', 'Projetado']
         valores = [margem_atual, margem_final]
-        cores = ['#003366', '#d32f2f'] # Azul Escuro e Vermelho
-        
-        bars = ax.bar(cenarios, valores, color=cores, width=0.5)
-        ax.set_ylim(0, 100)
-        ax.set_ylabel('Margem %')
-        
-        # Adiciona os valores no topo das barras
+        cores = ['#003366', '#d32f2f']
+        bars = ax1.bar(cenarios, valores, color=cores, width=0.6)
+        ax1.set_ylim(0, 100)
+        ax1.set_title("Erosão de Margem %", fontsize=10, fontweight='bold')
         for bar in bars:
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 1,
-                    f'{height:.2f}%', ha='center', va='bottom', fontweight='bold')
+            ax1.text(bar.get_x() + bar.get_width()/2., height + 1, f'{height:.1f}%', ha='center', fontweight='bold', fontsize=8)
 
-        # 2. Salvar em arquivo temporário e inserir no PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-            plt.savefig(tmpfile.name, format='png', bbox_inches='tight')
-            plt.close(fig_plt)
-            pdf.image(tmpfile.name, x=40, w=130) # Centralizado no PDF
-            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
+            plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=150)
+            plt.close(fig_hist)
+            pdf.image(tmp1.name, x=15, y=y_inicial, w=85) # Posicionado à esquerda
+
+        # --- GRÁFICO 2: TRÍPLICE DE RESTRIÇÃO (Direita) ---
+        # Criando versão Matplotlib para o PDF (Radar Chart)
+        fig_radar = plt.figure(figsize=(4, 3))
+        ax2 = fig_radar.add_subplot(111, polar=True)
+        
+        categorias = ['Custo', 'Escopo', 'Tempo']
+        angles = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
+        angles += angles[:1] # Fechar o gráfico
+        
+        # Dados (Normalizados para o gráfico)
+        plan = [80, 80, 80, 80]
+        impct = [100, 110, 120, 100]
+        
+        ax2.plot(angles, plan, color='#1f77b4', linewidth=2, label='Plan')
+        ax2.fill(angles, plan, color='#1f77b4', alpha=0.25)
+        ax2.plot(angles, impct, color='#d32f2f', linewidth=2, label='Impacto')
+        ax2.fill(angles, impct, color='#d32f2f', alpha=0.4)
+        
+        ax2.set_thetagrids(np.degrees(angles[:-1]), categorias)
+        ax2.set_title("Triplice de Restricao", fontsize=10, fontweight='bold')
+        ax2.set_yticklabels([]) # Limpa números internos para estética
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
+            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=150)
+            plt.close(fig_radar)
+            pdf.image(tmp2.name, x=105, y=y_inicial, w=85) # Posicionado à direita
+
+        # Ajusta o cursor do PDF para baixo dos gráficos (evita sobreposição)
+        pdf.set_y(y_inicial + 65)
+
     except Exception as e:
-        st.error(f"Erro ao incluir gráfico no PDF: {e}")
-        pdf.cell(0, 10, "[Gráfico não disponível]", 0, 1, 'C')
+        st.error(f"Erro ao gerar gráficos laterais: {e}")
+        pdf.cell(0, 10, "[Erro na renderização dos gráficos]", 0, 1, 'C')
 
     # --- FINALIZAÇÃO DO PDF ---
     pdf.ln(10)
