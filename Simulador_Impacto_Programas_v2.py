@@ -40,12 +40,11 @@ def init_db():
 
 db_conn = init_db()
 
-# --- CLASSE PDF PROFISSIONAL ---
+# --- CLASSE PDF PROFISSIONAL ATUALIZADA ---
 class RelatorioExecutivo(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 14)
         self.set_text_color(0, 51, 102)
-        # Cabeçalho Institucional
         self.cell(0, 10, 'DOSSIE DE IMPACTO FINANCEIRO E EROSAO DE MARGEM', 0, 1, 'C')
         self.set_font('Arial', 'I', 9)
         self.cell(0, 5, 'PMO CORPORATIVO - DIRETORIA DE OPERACOES', 0, 1, 'C')
@@ -56,18 +55,20 @@ class RelatorioExecutivo(FPDF):
         self.ln(10)
 
     def footer(self):
-        self.set_y(-40)
+        # Apenas informações de página e data no rodapé real
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 7)
+        self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL | Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 0, 'C')
+
+    def assinaturas(self):
+        # Método para inserir assinaturas apenas no final do documento
+        self.set_y(-50) # Posiciona a 50mm do fim da página
         self.set_font('Arial', 'B', 8)
-        # Campo de Assinaturas
         self.set_draw_color(150, 150, 150)
         self.line(20, self.get_y(), 90, self.get_y())
         self.line(120, self.get_y(), 190, self.get_y())
         self.cell(95, 8, 'Diretoria de Operacoes', 0, 0, 'C')
         self.cell(95, 8, 'Gerencia do Programa', 0, 1, 'C')
-        
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 7)
-        self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL | Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 0, 'C')
 
     def chapter_title(self, label):
         self.set_font('Arial', 'B', 11)
@@ -327,64 +328,58 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.chapter_title("5. ANALISE GRAFICA: MARGEM E TRIPLICE DE RESTRICAO")
     
     try:
-        # Posição inicial para os gráficos
-        y_inicial = pdf.get_y() + 5
-
-        # --- GRÁFICO 1: HISTOGRAMA DE MARGEM (Esquerda) ---
-        fig_hist, ax1 = plt.subplots(figsize=(4, 3))
+        y_graficos = pdf.get_y() + 5
+        largura_grafico = 85 # Tamanho idêntico para ambos
+        
+        # 1. HISTOGRAMA (Mesmo tamanho)
+        fig_hist, ax1 = plt.subplots(figsize=(5, 4)) # Aspect ratio controlado
         cenarios = ['Baseline', 'Projetado']
         valores = [margem_atual, margem_final]
-        cores = ['#003366', '#d32f2f']
-        bars = ax1.bar(cenarios, valores, color=cores, width=0.6)
-        ax1.set_ylim(0, 100)
-        ax1.set_title("Erosão de Margem %", fontsize=10, fontweight='bold')
+        bars = ax1.bar(cenarios, valores, color=['#003366', '#d32f2f'], width=0.6)
+        ax1.set_ylim(0, 110)
+        ax1.set_title("Erosao de Margem %", fontsize=12, fontweight='bold')
         for bar in bars:
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 1, f'{height:.1f}%', ha='center', fontweight='bold', fontsize=8)
+            ax1.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 2, 
+                    f'{bar.get_height():.1f}%', ha='center', fontweight='bold')
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
-            plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=150)
+            plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=200)
             plt.close(fig_hist)
-            pdf.image(tmp1.name, x=15, y=y_inicial, w=85) # Posicionado à esquerda
+            pdf.image(tmp1.name, x=15, y=y_graficos, w=largura_grafico)
 
-        # --- GRÁFICO 2: TRÍPLICE DE RESTRIÇÃO (Direita) ---
-        # Criando versão Matplotlib para o PDF (Radar Chart)
-        fig_radar = plt.figure(figsize=(4, 3))
+        # 2. RADAR (Mesmo tamanho)
+        fig_radar = plt.figure(figsize=(5, 4)) # Aspect ratio controlado igual ao de cima
         ax2 = fig_radar.add_subplot(111, polar=True)
-        
         categorias = ['Custo', 'Escopo', 'Tempo']
         angles = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
-        angles += angles[:1] # Fechar o gráfico
+        angles += angles[:1]
         
-        # Dados (Normalizados para o gráfico)
-        plan = [80, 80, 80, 80]
-        impct = [100, 110, 120, 100]
-        
-        ax2.plot(angles, plan, color='#1f77b4', linewidth=2, label='Plan')
-        ax2.fill(angles, plan, color='#1f77b4', alpha=0.25)
-        ax2.plot(angles, impct, color='#d32f2f', linewidth=2, label='Impacto')
+        plan = [80, 80, 80, 80]; impct = [100, 110, 120, 100]
+        ax2.plot(angles, plan, color='#1f77b4', linewidth=2)
+        ax2.fill(angles, plan, color='#1f77b4', alpha=0.2)
+        ax2.plot(angles, impct, color='#d32f2f', linewidth=2)
         ax2.fill(angles, impct, color='#d32f2f', alpha=0.4)
-        
         ax2.set_thetagrids(np.degrees(angles[:-1]), categorias)
-        ax2.set_title("Triplice de Restricao", fontsize=10, fontweight='bold')
-        ax2.set_yticklabels([]) # Limpa números internos para estética
+        ax2.set_title("Triplice de Restricao", fontsize=12, fontweight='bold')
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=150)
+            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=200)
             plt.close(fig_radar)
-            pdf.image(tmp2.name, x=105, y=y_inicial, w=85) # Posicionado à direita
+            pdf.image(tmp2.name, x=105, y=y_graficos, w=largura_grafico)
 
-        # Ajusta o cursor do PDF para baixo dos gráficos (evita sobreposição)
-        pdf.set_y(y_inicial + 65)
+        # Define posição segura após os gráficos
+        pdf.set_y(y_graficos + 75)
 
     except Exception as e:
-        st.error(f"Erro ao gerar gráficos laterais: {e}")
-        pdf.cell(0, 10, "[Erro na renderização dos gráficos]", 0, 1, 'C')
+        st.error(f"Erro nos gráficos: {e}")
 
-    # --- FINALIZAÇÃO DO PDF ---
-    pdf.ln(10)
-    pdf.set_font('Arial', 'I', 8)
-    pdf.cell(0, 10, f"Conclusão: O impacto total de {format_brl(total_cenario)} resultou em uma erosão de {erosao:.2f} p.p.", 0, 1, 'C')
+    # --- FINALIZAÇÃO E ASSINATURAS ---
+    pdf.ln(5)
+    pdf.set_font('Arial', 'B', 10)
+    pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
+    
+    # Chama o novo método de assinaturas que fica no pé da página
+    pdf.assinaturas()
 
     # 4. DOWNLOAD DINÂMICO
     output = pdf.output(dest='S')
