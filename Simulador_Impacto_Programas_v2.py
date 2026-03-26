@@ -170,7 +170,7 @@ st.markdown('<div class="section-header">3. Matriz de Alocação e Orçamento</d
 with st.container(border=True):
     m1, m2 = st.columns(2)
     data_inicio = m1.date_input("Início do Evento/Impacto", value=datetime.now(),format="DD/MM/YYYY")
-    horizonte = m2.number_input("Meses (Horizonte)", min_value=1, value=4)
+    horizonte = m2.number_input("Meses (Horizonte)", min_value=1, value=1)
     lista_meses = get_meses_list(data_inicio, horizonte)
 
     with st.expander("➕ Adicionar Recurso ao Orçamento", expanded=True):
