@@ -112,13 +112,26 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# --- LISTA DE PROGRAMAS ---
+LISTA_PROGRAMAS = [
+    "INS", "EINSTEIN", "CEMA", "MOGI", "RHP", 
+    "HCM", "HCS", "SoulBene Digital", "Girassol", "Bauru"
+]
+
 # 1. INFORMAÇÕES DO PROGRAMA
 st.markdown('<div class="section-header">1. Informações do Programa</div>', unsafe_allow_html=True)
 with st.container(border=True):
     c1, c2 = st.columns(2)
-    prog_nome = c1.text_input("Nome do Programa", value=" ")
-    prog_gerente = c2.text_input("Gerente do Programa", value=" ")
-    justificativa = st.text_area("Contexto da Mudança", " ")
+    
+    # TROCA DE st.text_input POR st.selectbox
+    prog_nome = c1.selectbox(
+        "Selecione o Nome do Programa", 
+        options=LISTA_PROGRAMAS,
+        index=0  # Define o primeiro item como padrão
+    )
+    
+    prog_gerente = c2.text_input("Gerente do Programa", value="")
+    justificativa = st.text_area("Contexto da Mudança", "")
 
 # 2. CENÁRIOS DE MUDANÇA (Ride and Show / Hide and Show)
 st.markdown('<div class="section-header">2. Cenário de Mudança</div>', unsafe_allow_html=True)
