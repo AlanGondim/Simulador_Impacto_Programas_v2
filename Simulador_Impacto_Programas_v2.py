@@ -368,13 +368,12 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
             pdf.image(tmp2.name, x=112, y=y_graficos, w=largura_grafico)
 
         # Define posição segura após os gráficos
-        pdf.set_y(y_graficos + 45)
+        pdf.set_y(y_graficos + 55)
 
     except Exception as e:
         st.error(f"Erro nos gráficos: {e}")
 
     # --- FINALIZAÇÃO E ASSINATURAS ---
-    pdf.ln(5)
     pdf.set_font('Arial', 'B', 10)
     pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
     
