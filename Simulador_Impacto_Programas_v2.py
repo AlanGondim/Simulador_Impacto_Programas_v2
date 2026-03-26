@@ -8,7 +8,6 @@ import plotly.express as px
 from fpdf import FPDF
 from datetime import datetime, timedelta
 import tempfile
-import os
 import json
 
 # --- CONFIGURAÇÕES DE INTERFACE ---
@@ -19,19 +18,16 @@ def local_css():
         .stMetric { background-color: white; padding: 15px; border-radius: 8px; border-top: 4px solid #003366; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .header-box { background-color: white; padding: 20px; border-radius: 10px; border-left: 10px solid #003366; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         .section-header { color: #003366; font-weight: bold; margin-top: 30px; border-bottom: 2px solid #e0e0e0; padding-bottom: 5px; font-size: 1.2rem; }
-        .sidebar .sidebar-content { background-image: linear-gradient(#2e7d32,#2e7d32); color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-  # --- ENGINE DE DADOS ---
+# --- ENGINE DE DADOS ---
 def init_db():
     conn = sqlite3.connect('pmo_elite_v2.db', check_same_thread=False)
     c = conn.cursor()
-    # Tabela 1: Recursos
     c.execute('''CREATE TABLE IF NOT EXISTS matriz_alocacao 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, projeto TEXT, cargo TEXT, nivel TEXT, 
                   reg TEXT, taxa REAL, horas_json TEXT, total REAL)''')
-    # Tabela 2: Resultados do Cenário (Persistência do Histórico)
     c.execute('''CREATE TABLE IF NOT EXISTS resumo_impacto 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, data_geracao TEXT, projeto TEXT, 
                   custo_total REAL, margem_antes REAL, margem_depois REAL, erosao REAL)''')
@@ -40,7 +36,7 @@ def init_db():
 
 db_conn = init_db()
 
-# --- CLASSE PDF PROFISSIONAL ATUALIZADA ---
+# --- CLASSE PDF PROFISSIONAL ---
 class RelatorioExecutivo(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 14)
@@ -55,14 +51,12 @@ class RelatorioExecutivo(FPDF):
         self.ln(10)
 
     def footer(self):
-        # Apenas informações de página e data no rodapé real
         self.set_y(-15)
         self.set_font('Arial', 'I', 7)
         self.cell(0, 10, f'Pagina {self.page_no()} | CONFIDENCIAL | Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 0, 'C')
 
     def assinaturas(self):
-        # Método para inserir assinaturas apenas no final do documento
-        self.set_y(-50) # Posiciona a 50mm do fim da página
+        self.set_y(-50)
         self.set_font('Arial', 'B', 8)
         self.set_draw_color(150, 150, 150)
         self.line(20, self.get_y(), 90, self.get_y())
@@ -81,9 +75,7 @@ class RelatorioExecutivo(FPDF):
 def format_brl(val):
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
- # Função para Card de Métrica Customizado com Destaque em Vermelho
 def metric_card_custom(label, value, delta_val):
-    # Se o delta (erosão) for maior que 0, significa perda de margem -> Vermelho
     is_negative = delta_val > 0 
     color = "#d32f2f" if is_negative else "#2e7d32"
     bg_color = "#ffeeee" if is_negative else "#e8f5e9"
@@ -103,14 +95,10 @@ def get_meses_list(start_date, months):
     return [(start_date.replace(day=1) + timedelta(days=31*i)).strftime("%b/%y").upper() for i in range(months)]
 
 # --- INTERFACE ---
-st.set_page_config(page_title="Simulador de Impacto Financeiro - PMO PROGRAMAS", layout="wide")
+st.set_page_config(page_title="Simulador de Impacto Financeiro", layout="wide")
 local_css()
 
-st.markdown(f"""
-<div class="header-box">
-    <h2 style="margin:0; color:#003366;">📑 Análise de Impacto Financeiro - PMO PROGRAMAS</h2>
-</div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="header-box"><h2 style="margin:0; color:#003366;">📑 Análise de Impacto Financeiro - PMO PROGRAMAS</h2></div>', unsafe_allow_html=True)
 
 # --- LISTA DE PROGRAMAS ---
 LISTA_PROGRAMAS = [
@@ -119,19 +107,13 @@ LISTA_PROGRAMAS = [
 ]
 
 # 1. INFORMAÇÕES DO PROGRAMA
+LISTA_PROGRAMAS = [" ", "INS", "EINSTEIN", "CEMA", "MOGI", "RHP", "HCM", "HCS", "SoulBene Digital", "Girassol", "Bauru"]
 st.markdown('<div class="section-header">1. Informações do Programa</div>', unsafe_allow_html=True)
 with st.container(border=True):
     c1, c2 = st.columns(2)
-    
-    # TROCA DE st.text_input POR st.selectbox
-    prog_nome = c1.selectbox(
-        "Selecione o Nome do Programa", 
-        options=LISTA_PROGRAMAS,
-        index=0  # Define o primeiro item como padrão
-    )
-    
-    prog_gerente = c2.text_input("Gerente do Programa", value="")
-    contexto = st.text_area("Contexto da Mudança", "")
+    prog_nome = c1.selectbox("Programa", options=LISTA_PROGRAMAS)
+    prog_gerente = c2.text_input("Gerente do Programa")
+    contexto = st.text_area("Contexto da Mudança")
 
 # 2. CENÁRIOS DE MUDANÇA (Ride and Show / Hide and Show)
 st.markdown('<div class="section-header">2. Cenário de Mudança</div>', unsafe_allow_html=True)
