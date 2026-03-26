@@ -208,9 +208,34 @@ col_g1, col_g2 = st.columns([0.4, 0.6])
 with col_g1:
     categories = ['Custo', 'Escopo', 'Tempo']
     fig_tri = go.Figure()
-    fig_tri.add_trace(go.Scatterpolar(r=[80, 80, 80, 80], theta=categories+['Custo'], fill='toself', name='Planejado'))
-    fig_tri.add_trace(go.Scatterpolar(r=[100, 110, 120, 100], theta=categories+['Custo'], fill='toself', name='Impacto'))
-    fig_tri.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=True, title="Tríplice de Restrição")
+
+    # --- CAMADA: PLANEJADO (Ex: Azul Suave) ---
+    fig_tri.add_trace(go.Scatterpolar(
+        r=[80, 80, 80, 80], 
+        theta=categories+['Custo'], 
+        fill='toself', 
+        name='Planejado',
+        line_color='#1f77b4',  # Cor da linha
+        fillcolor='rgba(31, 119, 180, 0.3)' # Cor do preenchimento com transparência
+    ))
+
+    # --- CAMADA: IMPACTO (Ex: Vermelho/Laranja Vibrante) ---
+    fig_tri.add_trace(go.Scatterpolar(
+        r=[100, 110, 120, 100], 
+        theta=categories+['Custo'], 
+        fill='toself', 
+        name='Impacto',
+        line_color='#d32f2f', # Cor da linha (Vermelho)
+        fillcolor='rgba(211, 47, 47, 0.4)' # Cor do preenchimento com transparência
+    ))
+
+    fig_tri.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 150]) # Ativado para facilitar leitura
+        ), 
+        showlegend=True, 
+        title="Tríplice de Restrição"
+    )
     st.plotly_chart(fig_tri, use_container_width=True)
 
 # 7. DRE E MARGEM FINAL
