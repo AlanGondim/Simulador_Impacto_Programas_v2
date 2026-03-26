@@ -203,14 +203,14 @@ if horizonte > 0:
     st.table(df_mensal.style.format({'Custo evento (Base + Risco)': format_brl, 'Impacto acumulado': format_brl}))
 
 # 6. TRÍPLICE RESTRIÇÃO
-st.markdown('<div class="section-header">6. Análise integrada: tríplice de restrição</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">6. Análise integrada</div>', unsafe_allow_html=True)
 col_g1, col_g2 = st.columns([0.4, 0.6])
 with col_g1:
     categories = ['Custo', 'Escopo', 'Tempo']
     fig_tri = go.Figure()
     fig_tri.add_trace(go.Scatterpolar(r=[80, 80, 80, 80], theta=categories+['Custo'], fill='toself', name='Planejado'))
     fig_tri.add_trace(go.Scatterpolar(r=[100, 110, 120, 100], theta=categories+['Custo'], fill='toself', name='Impacto'))
-    fig_tri.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=True, title="Triângulo de Restrição")
+    fig_tri.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=True, title="Tríplice de Restrição")
     st.plotly_chart(fig_tri, use_container_width=True)
 
 # 7. DRE E MARGEM FINAL
