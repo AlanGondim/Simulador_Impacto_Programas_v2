@@ -418,16 +418,17 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
 
         # --- REPOSICIONAMENTO PÓS-GRÁFICOS ---
         # Definimos o Y abaixo da altura dos gráficos (y_graficos + altura da imagem)
-        pdf.set_y(y_graficos + 65) 
+        pdf.set_y(-65) 
 
     except Exception as e:
         st.error(f"Erro nos gráficos: {e}")
 
-    # Conclusão Texto
+    # Conclusão Texto (Agora posicionado logo acima das assinaturas)
     pdf.set_font('Arial', 'B', 10)
-    pdf.multi_cell(0, 8, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
+    pdf.set_text_color(0, 51, 102) # Azul para combinar com o tema
+    pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
     
-    # Assinaturas sempre no final do documento
+    # Chama as assinaturas que estão fixas em set_y(-50)
     pdf.assinaturas()
 
     # Download
