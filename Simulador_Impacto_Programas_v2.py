@@ -169,11 +169,11 @@ with abas_cenario[3]:
 st.markdown('<div class="section-header">3. Matriz de Alocação e Orçamento</div>', unsafe_allow_html=True)
 with st.container(border=True):
     m1, m2 = st.columns(2)
-    data_inicio = m1.date_input("Início do Evento/Impacto", value=datetime.now(),format="DD/MM/YYYY")
+    data_inicio = m1.date_input("Início do Evento/Impacto", value=datetime.now(), format="DD/MM/YYYY")
     horizonte = m2.number_input("Meses (Horizonte)", min_value=1, value=1)
     lista_meses = get_meses_list(data_inicio, horizonte)
 
-    with st.expander("➕ Adicionar Recurso ao Orçamento", expanded=True):
+    with st.expander("➕ Adicionar Recurso ao Orçamento", expanded=False):
         f1, f2, f3 = st.columns(3)
         cargo = f1.selectbox("Cargo", ["Analista", "Consultor", "Especialista", "Gerente", "Desenvolvedor"])
         nivel = f2.selectbox("Nível", ["Junior", "Pleno", "Senior"])
@@ -181,19 +181,75 @@ with st.container(border=True):
         f4, f5, f6 = st.columns(3)
         taxa_h = f4.number_input("Taxa/Hora(R$)", value=150.0)
         hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
+        
         if f6.button("ADICIONAR RECURSO"):
-            h_dist = {m: hrs_base for m in lista_meses}
+            h_dist = {m: float(hrs_base) for m in lista_meses}
             total_r = sum(h_dist.values()) * taxa_h
             db_conn.execute("INSERT INTO matriz_alocacao (projeto, cargo, nivel, reg, taxa, horas_json, total) VALUES (?,?,?,?,?,?,?)",
                          (prog_nome, cargo, nivel, reg_cc, taxa_h, json.dumps(h_dist), total_r))
             db_conn.commit()
             st.rerun()
 
-    df_matriz = pd.read_sql_query(f"SELECT * FROM matriz_alocacao WHERE projeto='{prog_nome}'", db_conn)
-    custo_base_total = df_matriz['total'].sum() if not df_matriz.empty else 0.0
-    if not df_matriz.empty:
-        st.dataframe(df_matriz[['cargo', 'nivel', 'reg', 'taxa', 'total']], use_container_width=True)
+    # --- LÓGICA DE EDIÇÃO DINÂMICA ---
+    query = f"SELECT * FROM matriz_alocacao WHERE projeto='{prog_nome}'"
+    df_raw = pd.read_sql_query(query, db_conn)
+
+    if not df_raw.empty:
+        # 1. Transformar JSON em colunas de meses
+        df_edit = df_raw.copy()
+        for mes in lista_meses:
+            df_edit[mes] = df_edit['horas_json'].apply(lambda x: json.loads(x).get(mes, 0.0))
+        
+        # Selecionar colunas para exibição
+        cols_display = ['id', 'cargo', 'nivel', 'reg', 'taxa'] + lista_meses
+        
+        st.write("💡 *Dica: Edite as horas dos meses ou a taxa diretamente na tabela. Marque a caixa 'Deletar' para remover.*")
+        
+        # 2. Editor de Dados (Streamlit Data Editor)
+        edited_df = st.data_editor(
+            df_edit[cols_display],
+            column_config={
+                "id": None, # Esconde o ID
+                "taxa": st.column_config.NumberColumn("Taxa/Hora (R$)", format="R$ %.2f"),
+                **{mes: st.column_config.NumberColumn(f"Hrs {mes}", min_value=0) for mes in lista_meses}
+            },
+            num_rows="dynamic", # Permite excluir linhas
+            use_container_width=True,
+            key="editor_matriz"
+        )
+
+        # 3. Processar alterações e salvar no Banco
+        if st.button("💾 ATUALIZAR MATRIZ (SALVAR ALTERAÇÕES)"):
+            # Identificar linhas deletadas (comparando com o original)
+            ids_atuais = edited_df['id'].tolist() if 'id' in edited_df.columns else []
+            ids_originais = df_raw['id'].tolist()
+            ids_para_deletar = [i for i in ids_originais if i not in ids_atuais]
+
+            # Deletar removidos
+            for idx in ids_para_deletar:
+                db_conn.execute(f"DELETE FROM matriz_alocacao WHERE id = {idx}")
+
+            # Atualizar editados
+            for index, row in edited_df.iterrows():
+                # Reconstruir JSON de horas
+                new_h_dist = {mes: float(row[mes]) for mes in lista_meses}
+                new_total = sum(new_h_dist.values()) * row['taxa']
+                
+                db_conn.execute("""
+                    UPDATE matriz_alocacao 
+                    SET taxa = ?, horas_json = ?, total = ? 
+                    WHERE id = ?
+                """, (row['taxa'], json.dumps(new_h_dist), new_total, row['id']))
+            
+            db_conn.commit()
+            st.success("Matriz atualizada com sucesso!")
+            st.rerun()
+
+        custo_base_total = df_raw['total'].sum()
         st.metric("Burn Rate Médio / Orçamento Total da Equipe", format_brl(custo_base_total))
+    else:
+        custo_base_total = 0.0
+        st.info("Nenhum recurso alocado ainda.")
 
 # 4. RESERVA E PERT
 st.markdown('<div class="section-header">4. Análise de Riscos e Orçamento Total</div>', unsafe_allow_html=True)
