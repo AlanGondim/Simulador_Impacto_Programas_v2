@@ -108,7 +108,7 @@ local_css()
 
 st.markdown(f"""
 <div class="header-box">
-    <h2 style="margin:0; color:#003366;">📑 Relatório PMO PROGRAMAS - Análise de Impacto Financeiro</h2>
+    <h2 style="margin:0; color:#003366;">📑 Análise de Impacto Financeiro - PMO PROGRAMAS</h2>
 </div>
 """, unsafe_allow_html=True)
 
