@@ -1,4 +1,5 @@
 import streamlit as st
+import matplotlib.pyplot as plt
 import pandas as pd
 import sqlite3
 import numpy as np
@@ -22,13 +23,18 @@ def local_css():
     </style>
     """, unsafe_allow_html=True)
 
-   # --- ENGINE DE DADOS ---
+  # --- ENGINE DE DADOS ---
 def init_db():
     conn = sqlite3.connect('pmo_elite_v2.db', check_same_thread=False)
     c = conn.cursor()
+    # Tabela 1: Recursos
     c.execute('''CREATE TABLE IF NOT EXISTS matriz_alocacao 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, projeto TEXT, cargo TEXT, nivel TEXT, 
                   reg TEXT, taxa REAL, horas_json TEXT, total REAL)''')
+    # Tabela 2: Resultados do Cenário (Persistência do Histórico)
+    c.execute('''CREATE TABLE IF NOT EXISTS resumo_impacto 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, data_geracao TEXT, projeto TEXT, 
+                  custo_total REAL, margem_antes REAL, margem_depois REAL, erosao REAL)''')
     conn.commit()
     return conn
 
@@ -96,7 +102,7 @@ def get_meses_list(start_date, months):
     return [(start_date.replace(day=1) + timedelta(days=31*i)).strftime("%b/%y").upper() for i in range(months)]
 
 # --- INTERFACE ---
-st.set_page_config(page_title="PMO Elite Impact", layout="wide")
+st.set_page_config(page_title="Simulador de Impacto Financeiro - PMO PROGRAMAS", layout="wide")
 local_css()
 
 st.markdown(f"""
@@ -111,7 +117,7 @@ with st.container(border=True):
     c1, c2 = st.columns(2)
     prog_nome = c1.text_input("Nome do Programa", value=" ")
     prog_gerente = c2.text_input("Gerente do Programa", value=" ")
-    justificativa = st.text_area("Justificativa da mudança / contexto", " ")
+    justificativa = st.text_area("Contexto da Mudança", " ")
 
 # 2. CENÁRIOS DE MUDANÇA (Ride and Show / Hide and Show)
 st.markdown('<div class="section-header">2. Cenário de Mudança</div>', unsafe_allow_html=True)
@@ -232,14 +238,18 @@ with st.container(border=True):
     
     with res3:
         st.metric("Erosão de Margem", f"{erosao:.2f} p.p.")
-# 8. GRÁFICO DE EROSÃO
-st.markdown('<div class="section-header">8. Gráfico da Erosão de Margem</div>', unsafe_allow_html=True)
-df_erosao = pd.DataFrame({'Cenário': ['Meta', 'Atual', 'Projetado'], 'Margem %': [margem_meta, margem_atual, margem_final]})
-fig_bar = px.bar(df_erosao, x='Cenário', y='Margem %', text_auto='.2f', color='Cenário', color_discrete_sequence=['#455a64', '#00bfa5', '#d32f2f'])
-st.plotly_chart(fig_bar, use_container_width=True)
+# --- BOTÃO SALVAR E GERAR PDF ---
+if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
+    # 1. SALVAR NO BANCO SQL (Persistência do Resultado)
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    db_conn.execute('''INSERT INTO resumo_impacto 
+                       (data_geracao, projeto, custo_total, margem_antes, margem_depois, erosao) 
+                       VALUES (?, ?, ?, ?, ?, ?)''', 
+                    (agora, prog_nome, total_cenario, margem_atual, margem_final, erosao))
+    db_conn.commit()
+    st.sidebar.success("Dados salvos no banco SQL!")
 
-# --- GERAÇÃO DO PDF PARA VALIDAÇÃO ---
-if st.sidebar.button("📊 GERAR RELATÓRIO PARA ASSINATURA"):
+    # 2. GERAR PDF
     pdf = RelatorioExecutivo()
     pdf.add_page()
     
@@ -288,10 +298,53 @@ if st.sidebar.button("📊 GERAR RELATÓRIO PARA ASSINATURA"):
     pdf.set_font('Arial', 'B', 10); pdf.set_text_color(180, 0, 0)
     pdf.cell(100, 10, "EROSAO DE MARGEM DETECTADA:", 0, 0); pdf.cell(0, 10, f"{erosao:.2f} p.p.", 0, 1, 'R')
     
-    # Espaço para Gráfico
-    pdf.ln(10)
-    pdf.set_text_color(0,0,0); pdf.set_font('Arial', 'I', 8)
-    pdf.cell(0, 10, "* Documento sujeito a revisao em caso de mudanca no escopo do incidente.", 0, 1, 'L')
+# --- CAPÍTULO 5: GRÁFICO (USANDO APENAS MATPLOTLIB PARA O PDF) ---
+    pdf.chapter_title("5. ANALISE GRAFICA DE MARGEM")
+    
+    try:
+        # 1. Gerar o gráfico com Matplotlib (Funciona 100% no Python 3.13)
+        fig_plt, ax = plt.subplots(figsize=(6, 3))
+        cenarios = ['Antes (Baseline)', 'Depois (Projetado)']
+        valores = [margem_atual, margem_final]
+        cores = ['#003366', '#d32f2f'] # Azul Escuro e Vermelho
+        
+        bars = ax.bar(cenarios, valores, color=cores, width=0.5)
+        ax.set_ylim(0, 100)
+        ax.set_ylabel('Margem %')
+        
+        # Adiciona os valores no topo das barras
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 1,
+                    f'{height:.2f}%', ha='center', va='bottom', fontweight='bold')
 
+        # 2. Salvar em arquivo temporário e inserir no PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+            plt.savefig(tmpfile.name, format='png', bbox_inches='tight')
+            plt.close(fig_plt)
+            pdf.image(tmpfile.name, x=40, w=130) # Centralizado no PDF
+            
+    except Exception as e:
+        st.error(f"Erro ao incluir gráfico no PDF: {e}")
+        pdf.cell(0, 10, "[Gráfico não disponível]", 0, 1, 'C')
+
+    # --- FINALIZAÇÃO DO PDF ---
+    pdf.ln(10)
+    pdf.set_font('Arial', 'I', 8)
+    pdf.cell(0, 10, f"Conclusão: O impacto total de {format_brl(total_cenario)} resultou em uma erosão de {erosao:.2f} p.p.", 0, 1, 'C')
+
+    # 4. DOWNLOAD DINÂMICO
     output = pdf.output(dest='S')
-    st.sidebar.download_button("📥 Baixar Dossiê para Validação", data=bytes(output), file_name="Dossie_Impacto_Oficial.pdf")
+    nome_arquivo = f"Relatorio_{prog_nome.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    
+    st.sidebar.download_button(
+        label="📥 Baixar PDF Agora",
+        data=bytes(output),
+        file_name=nome_arquivo,
+        mime="application/pdf"
+    )
+    
+    # Exibe o gráfico na tela do Streamlit apenas para visualização (Plotly na web não dá erro)
+    df_erosao = pd.DataFrame({'Cenário': ['Atual', 'Projetado'], 'Margem %': [margem_atual, margem_final]})
+    fig_web = px.bar(df_erosao, x='Cenário', y='Margem %', color='Cenário', range_y=[0, 100])
+    st.plotly_chart(fig_web)
