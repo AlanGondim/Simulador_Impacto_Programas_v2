@@ -368,7 +368,7 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
             pdf.image(tmp2.name, x=112, y=y_graficos, w=largura_grafico)
 
         # Define posição segura após os gráficos
-        pdf.set_y(y_graficos + 55)
+        pdf.set_y(y_graficos + 45)
 
     except Exception as e:
         st.error(f"Erro nos gráficos: {e}")
