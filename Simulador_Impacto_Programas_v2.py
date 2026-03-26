@@ -329,7 +329,7 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     
     try:
         y_graficos = pdf.get_y() + 5
-        largura_grafico = 85 # Tamanho idêntico para ambos
+        largura_grafico = 72 # Tamanho idêntico para ambos
         
         # 1. HISTOGRAMA (Mesmo tamanho)
         fig_hist, ax1 = plt.subplots(figsize=(5, 4)) # Aspect ratio controlado
@@ -345,7 +345,7 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
             plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=200)
             plt.close(fig_hist)
-            pdf.image(tmp1.name, x=15, y=y_graficos, w=largura_grafico)
+            pdf.image(tmp1.name, x=22, y=y_graficos, w=largura_grafico)
 
         # 2. RADAR (Mesmo tamanho)
         fig_radar = plt.figure(figsize=(5, 4)) # Aspect ratio controlado igual ao de cima
@@ -365,10 +365,10 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
             plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=200)
             plt.close(fig_radar)
-            pdf.image(tmp2.name, x=105, y=y_graficos, w=largura_grafico)
+            pdf.image(tmp2.name, x=112, y=y_graficos, w=largura_grafico)
 
         # Define posição segura após os gráficos
-        pdf.set_y(y_graficos + 75)
+        pdf.set_y(y_graficos + 65)
 
     except Exception as e:
         st.error(f"Erro nos gráficos: {e}")
