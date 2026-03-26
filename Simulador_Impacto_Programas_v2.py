@@ -350,8 +350,8 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.set_font('Arial', 'I', 9); pdf.multi_cell(0, 5, contexto)
     pdf.ln(5)
 
-    # Capítulo 2: Matriz de Alocação (O PONTO QUE FALTAVA)
-    pdf.chapter_title("2. DETALHAMENTO DA MATRIZ DE RECURSOS (EXTRA)")
+    # Capítulo 2: Matriz de Alocação (CORRIGIDO: usando edited_df)
+    pdf.chapter_title("2. DETALHAMENTO DA MATRIZ DE RECURSOS")
     pdf.set_font('Arial', 'B', 8)
     pdf.set_fill_color(0, 51, 102); pdf.set_text_color(255, 255, 255)
     pdf.cell(50, 7, "Cargo / Perfil", 1, 0, 'C', True)
@@ -361,12 +361,21 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.cell(40, 7, "Total Bruto", 1, 1, 'C', True)
     
     pdf.set_font('Arial', '', 8); pdf.set_text_color(0, 0, 0)
-    for _, row in df_matriz.iterrows():
-        pdf.cell(50, 7, row['cargo'], 1)
-        pdf.cell(40, 7, row['reg'], 1, 0, 'C')
-        pdf.cell(30, 7, f"R$ {row['taxa']:.2f}", 1, 0, 'R')
-        pdf.cell(30, 7, str(160 * horizonte), 1, 0, 'C')
-        pdf.cell(40, 7, format_brl(row['total']), 1, 1, 'R')
+    
+    # Verificação de segurança caso o dataframe não tenha sido gerado
+    if 'edited_df' in locals():
+        for _, row in edited_df.iterrows():
+            # Soma as horas de todas as colunas de meses da linha atual
+            hrs_totais = sum([float(row[m]) for m in lista_meses])
+            valor_total_recurso = hrs_totais * row['taxa']
+            
+            pdf.cell(50, 7, str(row['cargo']), 1)
+            pdf.cell(40, 7, str(row['reg']), 1, 0, 'C')
+            pdf.cell(30, 7, f"R$ {row['taxa']:.2f}", 1, 0, 'R')
+            pdf.cell(30, 7, f"{hrs_totais:.1f}", 1, 0, 'C')
+            pdf.cell(40, 7, format_brl(valor_total_recurso), 1, 1, 'R')
+    else:
+        pdf.cell(0, 7, "Nenhum recurso listado no cenário.", 1, 1, 'C')
     
     # Capítulo 3: Análise Financeira
     pdf.ln(5)
