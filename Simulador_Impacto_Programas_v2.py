@@ -107,7 +107,7 @@ local_css()
 
 st.markdown(f"""
 <div class="header-box">
-    <h2 style="margin:0; color:#003366;">📑 Relatório de Análise de Impacto Financeiro - PMO Programas</h2>
+    <h2 style="margin:0; color:#003366;">📑 Relatório PMO PROGRAMAS - Análise de Impacto Financeiro</h2>
 </div>
 """, unsafe_allow_html=True)
 
@@ -127,9 +127,9 @@ with abas_cenario[0]:
     show_rollout = st.checkbox("Informar Replanejamento (Rollout)")
     if show_rollout:
         c_r1, c_r2, c_r3 = st.columns(3)
-        v_otm = c_r1.number_input("Otimista (Rollouts/mês)", value=6.0)
-        v_pro = c_r2.number_input("Provável (Rollouts/mês)", value=5.0)
-        v_pes = c_r3.number_input("Pessimista (Rollouts/mês)", value=3.0)
+        v_otm = c_r1.number_input("Otimista (Rollouts/mês)", value=6.0, step=1.0)
+        v_pro = c_r2.number_input("Provável (Rollouts/mês)", value=5.0, step=1.0)
+        v_pes = c_r3.number_input("Pessimista (Rollouts/mês)", value=3.0, step=1.0)
         vel_pert = (v_otm + 4*v_pro + v_pes) / 6
         st.info(f"Velocidade PERT Calculada: {vel_pert:.2f} rollouts/mês")
 
