@@ -306,7 +306,7 @@ with col_g1:
             radialaxis=dict(visible=True, range=[0, 150]) # Ativado para facilitar leitura
         ), 
         showlegend=True, 
-        title="Tríplice de Restrição"
+        title="Tríplice Restrição"
     )
     st.plotly_chart(fig_tri, use_container_width=True)
 
