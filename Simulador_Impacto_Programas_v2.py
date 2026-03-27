@@ -157,16 +157,11 @@ with st.container(border=True):
     horizonte = m2.number_input("Meses (Horizonte)", min_value=1, value=1)
     lista_meses = get_meses_list(data_inicio, horizonte)
 
-    # Nova Lista de Regionais
-    LISTA_REGIONAIS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"]
-
     with st.expander("➕ Adicionar Recurso ao Orçamento", expanded=False):
         f1, f2, f3 = st.columns(3)
         cargo = f1.selectbox("Cargo", ["Analista", "Consultor", "Especialista", "Gerente", "Desenvolvedor"])
         nivel = f2.selectbox("Nível", ["Junior", "Pleno", "Senior"])
-        # Alterado de text_input para selectbox:
-        reg_cc = f3.selectbox("Regional", options=LISTA_REGIONAIS) 
-        
+        reg_cc = f3.text_input("Regional / Centro de Custo", " ")
         f4, f5, f6 = st.columns(3)
         taxa_h = f4.number_input("Taxa/Hora(R$)", value=150.0)
         hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
@@ -188,12 +183,11 @@ with st.container(border=True):
         
         cols_display = ['id', 'cargo', 'nivel', 'reg', 'taxa'] + lista_meses
         
-        # EDITOR REATIVO ATUALIZADO
+        # EDITOR REATIVO
         edited_df = st.data_editor(
             df_edit[cols_display],
             column_config={
                 "id": None,
-                "reg": st.column_config.SelectboxColumn("Regional", options=LISTA_REGIONAIS, required=True),
                 "taxa": st.column_config.NumberColumn("Taxa/Hora (R$)", format="R$ %.2f"),
                 **{mes: st.column_config.NumberColumn(f"Hrs {mes}", min_value=0) for mes in lista_meses}
             },
@@ -312,7 +306,7 @@ with col_g1:
             radialaxis=dict(visible=True, range=[0, 150]) # Ativado para facilitar leitura
         ), 
         showlegend=True, 
-        title="Tríplice Restrição"
+        title="Tríplice de Restrição"
     )
     st.plotly_chart(fig_tri, use_container_width=True)
 
@@ -403,47 +397,4 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
             plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=150)
-            pdf.image(tmp1.name, x=15, y=y_graficos, w=largura_grafico)
-        plt.close(fig_hist)
-
-        # Gerar Radar
-        fig_radar = plt.figure(figsize=(5, 3.5))
-        ax2 = fig_radar.add_subplot(111, polar=True)
-        # ... (lógica do radar mantida)
-        categorias = ['Custo', 'Escopo', 'Tempo']
-        angles = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
-        angles += angles[:1]
-        ax2.plot(angles, [80, 80, 80, 80], color='#1f77b4', linewidth=2)
-        ax2.fill(angles, [80, 80, 80, 80], color='#1f77b4', alpha=0.2)
-        ax2.plot(angles, [100, 110, 120, 100], color='#d32f2f', linewidth=2)
-        ax2.fill(angles, [100, 110, 120, 100], color='#d32f2f', alpha=0.4)
-        ax2.set_thetagrids(np.degrees(angles[:-1]), categorias)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=150)
-            pdf.image(tmp2.name, x=110, y=y_graficos, w=largura_grafico)
-        plt.close(fig_radar)
-
-        # --- REPOSICIONAMENTO PÓS-GRÁFICOS ---
-        # Definimos o Y abaixo da altura dos gráficos (y_graficos + altura da imagem)
-        pdf.set_y(-65) 
-
-    except Exception as e:
-        st.error(f"Erro nos gráficos: {e}")
-
-    # Conclusão Texto (Agora posicionado logo acima das assinaturas)
-    pdf.set_font('Arial', 'B', 10)
-    pdf.set_text_color(0, 51, 102) # Azul para combinar com o tema
-    pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
-    
-    # Chama as assinaturas que estão fixas em set_y(-50)
-    pdf.assinaturas()
-
-    # Download
-    output = pdf.output(dest='S')
-    st.sidebar.download_button(
-        label="📥 Baixar PDF Agora",
-        data=bytes(output),
-        file_name=f"Dossie_{prog_nome}.pdf",
-        mime="application/pdf"
-    )
+            pdf.image(tmp1.name, x=15, y
