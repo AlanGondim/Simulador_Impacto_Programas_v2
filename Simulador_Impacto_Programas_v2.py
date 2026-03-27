@@ -107,7 +107,7 @@ LISTA_PROGRAMAS = [
 ]
 
 # Adicione esta lista com os nomes dos gerentes
-LISTA_GERENTES = [" ", "Mariane Mylius", "Rosemary Lopes", "Lizia Cunha", "Sergio Carvalho", "Roberio Matos ", "Kamyla Ferrarezzi", "Cristiano Gomes", "Ana Alencar", "Marcela Prates", "Luiza Liberal", "Jose Alexandre" ]
+LISTA_GERENTES = [" ", "Mariane Mylius", "Rosemary Lopes", "Lizia Cunha", "Sergio Carvalho", "Roberio Matos ", "Kamyla Ferrarezi", "Cristiano Gomes", "Ana Alencar", "Marcela Prates", "Luiza Liberal", "Jose Alexandre" ]
 
 # 1. INFORMAÇÕES DO PROGRAMA
 st.markdown('<div class="section-header">1. Informações do Programa</div>', unsafe_allow_html=True)
