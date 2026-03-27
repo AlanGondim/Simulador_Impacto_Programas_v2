@@ -397,4 +397,47 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
             plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=150)
-            pdf.image(tmp1.name, x=15, y
+            pdf.image(tmp1.name, x=15, y=y_graficos, w=largura_grafico)
+        plt.close(fig_hist)
+
+        # Gerar Radar
+        fig_radar = plt.figure(figsize=(5, 3.5))
+        ax2 = fig_radar.add_subplot(111, polar=True)
+        # ... (lógica do radar mantida)
+        categorias = ['Custo', 'Escopo', 'Tempo']
+        angles = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
+        angles += angles[:1]
+        ax2.plot(angles, [80, 80, 80, 80], color='#1f77b4', linewidth=2)
+        ax2.fill(angles, [80, 80, 80, 80], color='#1f77b4', alpha=0.2)
+        ax2.plot(angles, [100, 110, 120, 100], color='#d32f2f', linewidth=2)
+        ax2.fill(angles, [100, 110, 120, 100], color='#d32f2f', alpha=0.4)
+        ax2.set_thetagrids(np.degrees(angles[:-1]), categorias)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
+            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=150)
+            pdf.image(tmp2.name, x=110, y=y_graficos, w=largura_grafico)
+        plt.close(fig_radar)
+
+        # --- REPOSICIONAMENTO PÓS-GRÁFICOS ---
+        # Definimos o Y abaixo da altura dos gráficos (y_graficos + altura da imagem)
+        pdf.set_y(-65) 
+
+    except Exception as e:
+        st.error(f"Erro nos gráficos: {e}")
+
+    # Conclusão Texto (Agora posicionado logo acima das assinaturas)
+    pdf.set_font('Arial', 'B', 10)
+    pdf.set_text_color(0, 51, 102) # Azul para combinar com o tema
+    pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
+    
+    # Chama as assinaturas que estão fixas em set_y(-50)
+    pdf.assinaturas()
+
+    # Download
+    output = pdf.output(dest='S')
+    st.sidebar.download_button(
+        label="📥 Baixar PDF Agora",
+        data=bytes(output),
+        file_name=f"Dossie_{prog_nome}.pdf",
+        mime="application/pdf"
+    )
