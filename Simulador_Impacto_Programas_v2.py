@@ -106,6 +106,9 @@ LISTA_PROGRAMAS = [
     "HCM", "HCS", "SoulBene Digital", "Girassol", "Bauru"
 ]
 
+# Adicione esta lista com os nomes dos gerentes
+LISTA_GERENTES = [" ", "Mariane Mylius", "Rosemary Lopes", "Lizia Cunha", "Sergio Carvalho", "Roberio Matos ", "Kamyla Ferrarezzi", "Cristiano Gomes", "Ana Alencar", "Marcela Prates", "Luiza Liberal", "Jose Alexandre" ]
+
 # 1. INFORMAÇÕES DO PROGRAMA
 LISTA_PROGRAMAS = [" ", "INS", "EINSTEIN", "CEMA", "MOGI", "RHP", "HCM", "HCS", "SoulBene Digital", "Girassol", "Bauru"]
 st.markdown('<div class="section-header">1. Informações do Programa</div>', unsafe_allow_html=True)
@@ -113,6 +116,14 @@ with st.container(border=True):
     c1, c2 = st.columns(2)
     prog_nome = c1.selectbox("Programa", options=LISTA_PROGRAMAS)
     prog_gerente = c2.text_input("Gerente do Programa")
+    contexto = st.text_area("Contexto da Mudança")
+
+st.markdown('<div class="section-header">1. Informações do Programa</div>', unsafe_allow_html=True)
+with st.container(border=True):
+    c1, c2 = st.columns(2)
+    prog_nome = c1.selectbox("Programa", options=LISTA_PROGRAMAS)
+    # Trocado de text_input para selectbox
+    prog_gerente = c2.selectbox("Gerente do Programa", options=LISTA_GERENTES)
     contexto = st.text_area("Contexto da Mudança")
 
 # 2. CENÁRIOS DE MUDANÇA (Ride and Show / Hide and Show)
