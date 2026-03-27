@@ -157,11 +157,16 @@ with st.container(border=True):
     horizonte = m2.number_input("Meses (Horizonte)", min_value=1, value=1)
     lista_meses = get_meses_list(data_inicio, horizonte)
 
+    # Nova Lista de Regionais
+    LISTA_REGIONAIS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"]
+
     with st.expander("➕ Adicionar Recurso ao Orçamento", expanded=False):
         f1, f2, f3 = st.columns(3)
         cargo = f1.selectbox("Cargo", ["Analista", "Consultor", "Especialista", "Gerente", "Desenvolvedor"])
         nivel = f2.selectbox("Nível", ["Junior", "Pleno", "Senior"])
-        reg_cc = f3.text_input("Regional / Centro de Custo", " ")
+        # Alterado de text_input para selectbox:
+        reg_cc = f3.selectbox("Regional", options=LISTA_REGIONAIS) 
+        
         f4, f5, f6 = st.columns(3)
         taxa_h = f4.number_input("Taxa/Hora(R$)", value=150.0)
         hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
@@ -183,11 +188,12 @@ with st.container(border=True):
         
         cols_display = ['id', 'cargo', 'nivel', 'reg', 'taxa'] + lista_meses
         
-        # EDITOR REATIVO
+        # EDITOR REATIVO ATUALIZADO
         edited_df = st.data_editor(
             df_edit[cols_display],
             column_config={
                 "id": None,
+                "reg": st.column_config.SelectboxColumn("Regional", options=LISTA_REGIONAIS, required=True),
                 "taxa": st.column_config.NumberColumn("Taxa/Hora (R$)", format="R$ %.2f"),
                 **{mes: st.column_config.NumberColumn(f"Hrs {mes}", min_value=0) for mes in lista_meses}
             },
