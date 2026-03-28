@@ -166,7 +166,7 @@ with st.container(border=True):
         taxa_h = f4.number_input("Taxa/Hora(R$)", value=150.0)
         hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
         
-      if f6.button("ADICIONAR RECURSO"):
+    if f6.button("ADICIONAR RECURSO"):
             if reg_cc.strip() == "":
                 st.warning("Selecione uma Regional válida.")
             else:
