@@ -166,18 +166,18 @@ with st.container(border=True):
         taxa_h = f4.number_input("Taxa/Hora(R$)", value=150.0)
         hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
         
-     if f6.button("ADICIONAR RECURSO"):
-        if reg_cc.strip() == "":
-          st.warning("Selecione uma Regional válida.")
-        else:
-            h_dist = {m: float(hrs_base) for m in lista_meses}
-            total_r = sum(h_dist.values()) * taxa_h
-            db_conn.execute(
-                "INSERT INTO matriz_alocacao (projeto, cargo, nivel, reg, taxa, horas_json, total) VALUES (?,?,?,?,?,?,?)",
-                (prog_nome, cargo, nivel, reg_cc, taxa_h, json.dumps(h_dist), total_r)
-            )
-            db_conn.commit()
-            st.rerun()
+      if f6.button("ADICIONAR RECURSO"):
+            if reg_cc.strip() == "":
+                st.warning("Selecione uma Regional válida.")
+            else:
+                h_dist = {m: float(hrs_base) for m in lista_meses}
+                total_r = sum(h_dist.values()) * taxa_h
+                db_conn.execute(
+                    "INSERT INTO matriz_alocacao (projeto, cargo, nivel, reg, taxa, horas_json, total) VALUES (?,?,?,?,?,?,?)",
+                    (prog_nome, cargo, nivel, reg_cc, taxa_h, json.dumps(h_dist), total_r)
+                )
+                db_conn.commit()
+                st.rerun()
 
     df_raw = pd.read_sql_query(f"SELECT * FROM matriz_alocacao WHERE projeto='{prog_nome}'", db_conn)
 
