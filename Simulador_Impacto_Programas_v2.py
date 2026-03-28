@@ -172,8 +172,10 @@ with st.container(border=True):
     else:
         h_dist = {m: float(hrs_base) for m in lista_meses}
         total_r = sum(h_dist.values()) * taxa_h
-        db_conn.execute("INSERT INTO matriz_alocacao (projeto, cargo, nivel, reg, taxa, horas_json, total) VALUES (?,?,?,?,?,?,?)",
-                     (prog_nome, cargo, nivel, reg_cc, taxa_h, json.dumps(h_dist), total_r))
+        db_conn.execute(
+            "INSERT INTO matriz_alocacao (projeto, cargo, nivel, reg, taxa, horas_json, total) VALUES (?,?,?,?,?,?,?)",
+            (prog_nome, cargo, nivel, reg_cc, taxa_h, json.dumps(h_dist), total_r)
+        )
         db_conn.commit()
         st.rerun()
 
