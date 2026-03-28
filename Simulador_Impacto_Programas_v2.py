@@ -167,7 +167,7 @@ with st.container(border=True):
         hrs_base = f5.number_input("Horas/Mês (Base)", value=160)
         
         if f6.button("ADICIONAR RECURSO"):
-              if reg_cc.strip() == "":
+            if reg_cc.strip() == "":
         st.warning("Selecione uma Regional válida.")
     else:
         h_dist = {m: float(hrs_base) for m in lista_meses}
