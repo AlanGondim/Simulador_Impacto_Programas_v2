@@ -317,7 +317,7 @@ with col_g1:
             radialaxis=dict(visible=True, range=[0, 150]) # Ativado para facilitar leitura
         ), 
         showlegend=True, 
-        title="Tríplice de Restrição"
+        title="Tríplice Restrição"
     )
     st.plotly_chart(fig_tri, use_container_width=True)
 
@@ -394,7 +394,7 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     if pdf.get_y() > 180:
         pdf.add_page()
 
-    pdf.chapter_title("5. ANALISE GRAFICA: MARGEM E TRIPLICE DE RESTRICAO")
+    pdf.chapter_title("5. ANALISE GRAFICA: MARGEM E TRIPLICE RESTRICAO")
     
     try:
         y_graficos = pdf.get_y() + 5
