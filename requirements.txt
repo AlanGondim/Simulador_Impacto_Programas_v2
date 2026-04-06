@@ -1,7 +1,6 @@
 streamlit
 pandas
-oracledb
 matplotlib
-plotly
-fpdf
 numpy
+plotly
+fpdf2
