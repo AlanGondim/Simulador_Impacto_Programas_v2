@@ -5,3 +5,7 @@ numpy
 plotly
 fpdf2
 oracledb
+sqlite3
+json
+datetime
+tempfile
