@@ -1,8 +1,7 @@
 streamlit
 pandas
-plotly
-fpdf2
-Pillow
+oracledb
 matplotlib
-seaborn
-SQLAlchemy
+plotly
+fpdf
+numpy
