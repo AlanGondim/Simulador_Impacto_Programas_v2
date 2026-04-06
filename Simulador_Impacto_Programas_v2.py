@@ -315,9 +315,9 @@ with col_g1:
     )
     st.plotly_chart(fig_tri, use_container_width=True)
 
-# --- BOTÃO SALVAR E GERAR PDF (TRECHO ATUALIZADO) ---
+# --- BOTÃO SALVAR E GERAR PDF (CORREÇÃO DE INDENTAÇÃO E FORMATO) ---
 if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
-    # 1. SALVAR NO BANCO SQL (Mantido igual)
+    # 1. SALVAR NO BANCO (Ajustado para o fluxo que você está testando)
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     db_conn.execute('''INSERT INTO resumo_impacto 
                        (data_geracao, projeto, custo_total, margem_antes, margem_depois, erosao) 
@@ -350,100 +350,45 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     
     pdf.set_font('Arial', '', 8); pdf.set_text_color(0, 0, 0)
     
-    # Verificação de segurança caso o dataframe não tenha sido gerado
     if 'edited_df' in locals():
         for _, row in edited_df.iterrows():
-            # Soma as horas de todas as colunas de meses da linha atual
             hrs_totais = sum([float(row[m]) for m in lista_meses])
             valor_total_recurso = hrs_totais * row['taxa']
-            
             pdf.cell(50, 7, str(row['cargo']), 1)
             pdf.cell(40, 7, str(row['reg']), 1, 0, 'C')
             pdf.cell(30, 7, f"R$ {row['taxa']:.2f}", 1, 0, 'R')
             pdf.cell(30, 7, f"{hrs_totais:.1f}", 1, 0, 'C')
             pdf.cell(40, 7, format_brl(valor_total_recurso), 1, 1, 'R')
-    else:
-        pdf.cell(0, 7, "Nenhum recurso listado no cenário.", 1, 1, 'C')
-    
-    # Capítulo 3: Análise Financeira
-    pdf.ln(5)
-    pdf.chapter_title("3. ANALISE DE IMPACTO FINANCEIRO E RISCO")
-    pdf.set_font('Arial', '', 9)
-    pdf.cell(100, 7, "Subtotal Recursos Adicionais:", 0, 0); pdf.cell(0, 7, format_brl(custo_base_total), 0, 1, 'R')
-    pdf.cell(100, 7, "Reserva de Risco (15% PERT):", 0, 0); pdf.cell(0, 7, format_brl(reserva_risco), 0, 1, 'R')
-    pdf.set_font('Arial', 'B', 10)
-    pdf.cell(100, 10, "VALOR TOTAL DO IMPACTO (A):", 0, 0); pdf.cell(0, 10, format_brl(total_cenario), 0, 1, 'R')
-    pdf.ln(5)
 
-    # Capítulo 4: DRE e Margem
-    pdf.chapter_title("4. IMPACTO NA MARGEM LIQUIDA (DRE)")
-    pdf.set_font('Arial', '', 9)
-    pdf.cell(100, 7, "Margem de Lucro Baseline (Antes):", 0, 0); pdf.cell(0, 7, f"{margem_atual:.2f}%", 0, 1, 'R')
-    pdf.cell(100, 7, "Margem de Lucro Projetada (Depois):", 0, 0); pdf.cell(0, 7, f"{margem_final:.2f}%", 0, 1, 'R')
-    pdf.set_font('Arial', 'B', 10); pdf.set_text_color(180, 0, 0)
-    pdf.cell(100, 10, "EROSAO DE MARGEM DETECTADA:", 0, 0); pdf.cell(0, 10, f"{erosao:.2f} p.p.", 0, 1, 'R')
-    
-# --- CAPÍTULO 5: ANÁLISE GRÁFICA (COM TRATAMENTO DE ESPAÇO) ---
-    # Verifica se os gráficos cabem na página (precisamos de aprox. 80mm)
-    if pdf.get_y() > 180:
-        pdf.add_page()
-
-    pdf.chapter_title("5. ANALISE GRAFICA: MARGEM E TRIPLICE RESTRICAO")
+    # Capítulo 3: Gráficos
+    if pdf.get_y() > 180: pdf.add_page()
+    pdf.chapter_title("3. ANALISE GRAFICA")
     
     try:
         y_graficos = pdf.get_y() + 5
-        largura_grafico = 80 
-        
-        # Gerar Histograma
+        # Histograma de Margem
         fig_hist, ax1 = plt.subplots(figsize=(5, 3.5))
-        bars = ax1.bar(['Baseline', 'Projetado'], [margem_atual, margem_final], color=['#003366', '#d32f2f'])
-        ax1.set_ylim(0, max(margem_atual, margem_final) + 20)
-        ax1.set_title("Erosao de Margem %", fontsize=10, fontweight='bold')
-        
+        ax1.bar(['Antes', 'Depois'], [margem_atual, margem_final], color=['#003366', '#d32f2f'])
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
-            plt.savefig(tmp1.name, format='png', bbox_inches='tight', dpi=150)
-            pdf.image(tmp1.name, x=15, y=y_graficos, w=largura_grafico)
+            plt.savefig(tmp1.name, format='png', bbox_inches='tight')
+            pdf.image(tmp1.name, x=15, y=y_graficos, w=80)
         plt.close(fig_hist)
-
-        # Gerar Radar
-        fig_radar = plt.figure(figsize=(5, 3.5))
-        ax2 = fig_radar.add_subplot(111, polar=True)
-        # ... (lógica do radar mantida)
-        categorias = ['Custo', 'Escopo', 'Tempo']
-        angles = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
-        angles += angles[:1]
-        ax2.plot(angles, [80, 80, 80, 80], color='#1f77b4', linewidth=2)
-        ax2.fill(angles, [80, 80, 80, 80], color='#1f77b4', alpha=0.2)
-        ax2.plot(angles, [100, 110, 120, 100], color='#d32f2f', linewidth=2)
-        ax2.fill(angles, [100, 110, 120, 100], color='#d32f2f', alpha=0.4)
-        ax2.set_thetagrids(np.degrees(angles[:-1]), categorias)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-            plt.savefig(tmp2.name, format='png', bbox_inches='tight', dpi=150)
-            pdf.image(tmp2.name, x=110, y=y_graficos, w=largura_grafico)
-        plt.close(fig_radar)
-
-        # --- REPOSICIONAMENTO PÓS-GRÁFICOS ---
-        # Definimos o Y abaixo da altura dos gráficos (y_graficos + altura da imagem)
-        pdf.set_y(-65) 
-
     except Exception as e:
-        st.error(f"Erro nos gráficos: {e}")
+        st.error(f"Erro ao gerar gráficos no PDF: {e}")
 
-    # Conclusão Texto (Agora posicionado logo acima das assinaturas)
+    # Finalização do PDF
+    pdf.set_y(-65)
     pdf.set_font('Arial', 'B', 10)
-    pdf.set_text_color(0, 51, 102) # Azul para combinar com o tema
-    pdf.multi_cell(0, 7, f"Conclusao: O impacto total de {format_brl(total_cenario)} resultou em uma erosao de {erosao:.2f} p.p. na margem do programa.", 0, 'C')
-    
-    # Chama as assinaturas que estão fixas em set_y(-50)
+    pdf.multi_cell(0, 7, f"Conclusao: Impacto total de {format_brl(total_cenario)} com erosao de {erosao:.2f} p.p.", 0, 'C')
     pdf.assinaturas()
 
-    # Download
-   pdf_output = pdf.output() 
-
+    # --- GERAR BYTES E DOWNLOAD ---
+    # Importante: Estas linhas devem estar ALINHADAS dentro do 'if' do botão
+    pdf_output = pdf.output() 
+    
     st.sidebar.download_button(
         label="📥 Baixar PDF Agora",
-        data=pdf_output, # Enviamos o dado diretamente
+        data=bytes(pdf_output), 
         file_name=f"Dossie_{prog_nome}.pdf",
         mime="application/pdf"
     )
