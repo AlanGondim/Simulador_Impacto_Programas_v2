@@ -439,10 +439,11 @@ if st.sidebar.button("💾 SALVAR DADOS E GERAR PDF"):
     pdf.assinaturas()
 
     # Download
-    output = pdf.output(dest='S')
+   pdf_output = pdf.output() 
+
     st.sidebar.download_button(
         label="📥 Baixar PDF Agora",
-        data=bytes(output),
+        data=pdf_output, # Enviamos o dado diretamente
         file_name=f"Dossie_{prog_nome}.pdf",
         mime="application/pdf"
     )
